@@ -1,0 +1,33 @@
+# Allow unwrap/expect/panic (incl. assert!) inside #[cfg(test)] code.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+
+# Complexity thresholds
+cognitive-complexity-threshold = 15
+type-complexity-threshold = 200
+too-many-lines-threshold = 120
+
+doc-valid-idents = [
+    "CLI",
+    "TTS",
+    "STT",
+    "VAD",
+    "JSON",
+    "TOML",
+    "UUID",
+    "URL",
+    "XDG",
+    "PCM",
+    "WeSpeaker",
+    "voqx",
+    "spqx",
+    "trnscrb",
+    "eaRS",
+    "Foxline",
+    "Rustpotter",
+    "WhichKey",
+    "KeyProgression",
+    "ratatui",
+    "ANSI",
+]

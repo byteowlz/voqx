@@ -1,0 +1,17 @@
+/target
+**/*.rs.bk
+Cargo.lock.bak
+
+# Local voice registry data must never be committed (biometric-sensitive).
+/voice-registry/
+*.wav
+*.flac
+*.ogg
+*.m4a
+
+# UI build artifacts and dependencies
+ui/node_modules/
+ui/dist/
+
+# pi agent session-local state
+.pi/todos/

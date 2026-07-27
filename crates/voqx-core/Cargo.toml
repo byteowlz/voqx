@@ -1,0 +1,24 @@
+[package]
+name = "voqx-core"
+description = "Shared Voice Identity registry (identities, engine-scoped recognition/synthesis/wake profiles, cosine matching, durable XDG storage) plus the byteowlz workspace config/schema substrate."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+config.workspace = true
+schemars.workspace = true
+log.workspace = true
+shellexpand.workspace = true
+
+[lints]
+workspace = true

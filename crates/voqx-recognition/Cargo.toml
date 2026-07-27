@@ -1,0 +1,36 @@
+[package]
+name = "voqx-recognition"
+description = "WeSpeaker embedding backend for the voqx Voice Identity registry: turns audio into recognition embeddings and matches them against enrolled identities."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+voqx-core.workspace = true
+anyhow.workspace = true
+log.workspace = true
+hound.workspace = true
+# ONNX Runtime + system OpenBLAS; CPU everywhere. Native acceleration is
+# layered via the `coreml` / `cuda` features below rather than target-specific
+# dependency tables (Cargo unifies features across target tables, which would
+# pull ndarray-linalg twice under different linalg backends and fail to build).
+speakrs = { workspace = true }
+# Direct ort-sys dependency solely to select the TLS backend used to fetch the
+# prebuilt ONNX Runtime: speakrs pulls ort's default `tls-native`, whose download
+# fails here ("native-tls: connection closed via error") even though the CDN is
+# reachable. Enabling `tls-rustls` makes the fetch succeed.
+ort-sys = { version = "2.0.0-rc.12", default-features = false, features = ["tls-rustls", "download-binaries"] }
+
+[features]
+default = []
+# Native CoreML acceleration (macOS Apple Silicon).
+coreml = ["speakrs/coreml"]
+# Native CUDA acceleration (NVIDIA Turing+, requires the CUDA toolkit).
+cuda = ["speakrs/cuda"]
+
+[lints]
+workspace = true

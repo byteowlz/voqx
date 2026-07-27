@@ -1,0 +1,15 @@
+#:schema https://raw.githubusercontent.com/byteowlz/schemas/refs/heads/main/voqx/voqx.config.schema.json
+
+# Configuration for voqx.
+# Copy this file to $XDG_CONFIG_HOME/voqx/config.toml and adjust as needed.
+
+profile = "default"
+
+[logging]
+level = "info"
+
+[runtime]
+timeout = 60
+fail_fast = true
+
+[paths]

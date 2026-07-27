@@ -1,0 +1,127 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/voqx-core",
+    "crates/voqx-recognition",
+    "crates/voqx-cli",
+    "crates/voqx-tui",
+    "crates/voqx-mcp",
+    "crates/voqx-api",
+    "crates/byteowlz-tui-kit",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/byteowlz/voqx"
+readme = "README.md"
+keywords = ["voice", "registry", "speaker", "tts"]
+categories = ["command-line-utilities", "multimedia::audio"]
+
+[workspace.dependencies]
+# Shared across workspace
+anyhow = "1.0"
+thiserror = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+toml = "0.9"
+log = "0.4"
+env_logger = "0.11"
+config = { version = "0.15", features = ["toml"] }
+shellexpand = "3.1"
+
+# CLI
+clap = { version = "4.6", features = ["derive", "env"] }
+clap_complete = "4.6"
+
+# TUI
+ratatui = "0.30"
+crossterm = "0.29"
+
+# Async runtime
+tokio = { version = "1.50", features = ["full"] }
+
+# API/HTTP
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# MCP
+rmcp = { version = "2.2", features = ["server", "transport-io"] }
+# Pinned exactly and on purpose: rmcp declares rmcp-macros with a caret range, so
+# cargo will happily pair an older rmcp with newer macros that generate calls into
+# APIs it does not have. Bump this in lockstep with rmcp.
+rmcp-macros = "=2.2.0"
+
+# Schema generation
+schemars = "1.2"
+
+# Audio / recognition
+hound = "3"
+rubato = "0.16"
+# ONNX Runtime + system OpenBLAS; CPU everywhere. Acceleration is layered as a
+# cargo feature (see crates/voqx-recognition/Cargo.toml).
+speakrs = { version = "0.4", default-features = false, features = ["online", "openblas-system"] }
+
+# Internal crates
+voqx-core = { path = "crates/voqx-core" }
+voqx-recognition = { path = "crates/voqx-recognition" }
+byteowlz-tui-kit = { path = "crates/byteowlz-tui-kit" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+non_ascii_idents = "forbid"
+
+warnings = "deny"
+rust_2018_idioms = { level = "deny", priority = -1 }
+future_incompatible = { level = "deny", priority = -1 }
+nonstandard_style = { level = "deny", priority = -1 }
+
+missing_docs = "deny"
+missing_debug_implementations = "deny"
+missing_copy_implementations = "deny"
+unfulfilled_lint_expectations = "deny"
+
+[workspace.lints.rustdoc]
+all = { level = "deny", priority = -1 }
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
+
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+panic_in_result_fn = "deny"
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+await_holding_lock = "deny"
+large_futures = "deny"
+
+exit = "deny"
+mem_forget = "deny"
+
+large_stack_arrays = "deny"
+large_types_passed_by_value = "deny"
+
+multiple_crate_versions = "allow"
+
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_precision_loss = "allow"
+cast_possible_wrap = "allow"
+
+cognitive_complexity = "allow"
+
+print_stdout = "allow"
+print_stderr = "allow"
+struct_excessive_bools = "allow"

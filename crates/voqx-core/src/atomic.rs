@@ -117,8 +117,11 @@ mod tests {
     use std::time::Duration;
 
     fn temp_dir() -> std::path::PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("voqx-test-{}-{}", std::process::id(), super::nanos()));
+        let dir = std::env::temp_dir().join(format!(
+            "voqx-test-{}-{}",
+            std::process::id(),
+            super::nanos()
+        ));
         let _ = std::fs::create_dir_all(&dir);
         dir
     }

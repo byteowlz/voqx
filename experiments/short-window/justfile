@@ -1,0 +1,14 @@
+# Explicit pinned FASTDIAR checkout/checkpoint; existing Torch interpreter, CPU only, no installs.
+fastdiar-cpu python source registered fastdiar_source checkpoint out:
+    OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=1 uv run --offline --no-project --python '{{python}}' python fastdiar_probe.py --source '{{source}}' --registered '{{registered}}' --fastdiar-source '{{fastdiar_source}}' --checkpoint '{{checkpoint}}' --out '{{out}}'
+
+# Read-only scoring over registered frozen vectors; never writes to the input dataset.
+bank-sweep source manifest_sha256 out:
+    OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 uv run --offline python bank_probe.py --input '{{source}}' --manifest-sha256 '{{manifest_sha256}}' --out '{{out}}'
+
+# The probe never downloads models; provide an explicit cached ONNX path.
+test:
+    uv run --offline python -m unittest -v
+
+run source config model out:
+    uv run --offline python probe.py --source '{{source}}' --config '{{config}}' --model '{{model}}' --out '{{out}}' --threads 2

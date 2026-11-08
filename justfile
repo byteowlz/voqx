@@ -80,6 +80,33 @@ test-v:
 test-one TEST:
     cargo test --workspace {{TEST}}
 
+# Portable and FASTDIAR-only tests; no standalone recognition tool is installed.
+test-speaker:
+    cargo test --locked -p voqx-recognition --no-default-features --features fastdiar,registry
+
+# Compile/lint library targets and the portable WASM target.
+check-speaker:
+    cargo check --locked -p voqx-recognition --no-default-features --features fastdiar,registry
+    cargo clippy --locked -p voqx-recognition --all-features --all-targets -- -D warnings
+    cargo clippy --locked -p voqx-recognition --no-default-features --features wasm --target wasm32-unknown-unknown -- -D warnings
+
+# Explicit generated-signal fixture; no model download or private recordings.
+test-speaker-model MODEL FIXTURES:
+    VOQX_FASTDIAR_MODEL="{{MODEL}}" VOQX_FASTDIAR_FIXTURE="{{FIXTURES}}" cargo test --locked -p voqx-recognition --no-default-features --features fastdiar,registry --test fastdiar_cpu -- --ignored --nocapture
+
+# wasm-bindgen CLI must match the pinned workspace dependency.
+speaker-wasm-build OUTPUT:
+    cargo build --locked -p voqx-recognition --no-default-features --features wasm --target wasm32-unknown-unknown --release
+    wasm-bindgen --target web --out-dir "{{OUTPUT}}" target/wasm32-unknown-unknown/release/voqx_recognition.wasm
+
+# Synthetic native evidence; stdout can be redirected to a private fixture.
+speaker-contract-fixture:
+    cargo run --locked -p voqx-recognition --no-default-features --example speaker_contract
+
+# Requires WASM_PKG, NATIVE_FIXTURE, CHROMIUM, PLAYWRIGHT and NEW EVIDENCE_DIR.
+speaker-wasm-check:
+    bun crates/voqx-recognition/tests/wasm-contract.mjs
+
 # === Code Quality ===
 
 # Format all code

@@ -26,6 +26,7 @@ pub mod atomic;
 pub mod identity;
 pub mod ids;
 pub mod math;
+pub mod preprocessing;
 pub mod recognition;
 pub mod registry;
 pub mod registry_paths;
@@ -45,7 +46,8 @@ pub use identity::{
     VoiceIdentity, WakeProfile,
 };
 pub use math::{centroid, cosine};
-pub use recognition::{Recognition, RecognitionStatus, Thresholds};
+pub use preprocessing::RecognitionPreprocessing;
+pub use recognition::{AudioObservation, Recognition, RecognitionStatus, Thresholds};
 pub use registry::{REGISTRY_VERSION, RegistryStore, VoiceRegistry};
 pub use registry_paths::{RegistryPaths, default_registry_root};
 

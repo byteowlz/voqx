@@ -132,9 +132,8 @@ fn resample(samples: &[f32], source_sr: u32, target_sr: u32) -> Result<Vec<f32>>
         return Ok(samples.to_vec());
     }
     let chunk = 1024usize;
-    let mut resampler =
-        FftFixedIn::<f32>::new(source_sr as usize, target_sr as usize, chunk, 2, 1)
-            .map_err(|err| anyhow::anyhow!("creating resampler: {err}"))?;
+    let mut resampler = FftFixedIn::<f32>::new(source_sr as usize, target_sr as usize, chunk, 2, 1)
+        .map_err(|err| anyhow::anyhow!("creating resampler: {err}"))?;
     let mut output = Vec::new();
     let mut input = vec![vec![0.0f32; chunk]];
     let mut buffer = resampler.output_buffer_allocate(true);
@@ -189,7 +188,9 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("voqx-audio-{}", std::process::id()));
         let path = dir.join("a.wav");
         let audio = Audio {
-            samples: (0..24_000).map(|i| ((i as f32) / 50.0).sin() * 0.5).collect(),
+            samples: (0..24_000)
+                .map(|i| ((i as f32) / 50.0).sin() * 0.5)
+                .collect(),
             sample_rate: 24_000,
         };
         write_wav(&path, &audio).expect("writing wav");

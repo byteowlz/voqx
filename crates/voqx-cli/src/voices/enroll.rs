@@ -5,13 +5,18 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand};
-use voqx_core::identity::{RecognitionProfile, SourceRecording, SynthesisProfile, SynthesisReference};
+use voqx_core::identity::{
+    RecognitionProfile, SourceRecording, SynthesisProfile, SynthesisReference,
+};
 use voqx_core::registry_paths::RegistryPaths;
-use voqx_core::{VoiceIdentity, VoiceRegistry};
+use voqx_core::{RecognitionPreprocessing, VoiceIdentity, VoiceRegistry};
 
 use crate::audio::{self, Audio, RECOGNITION_SAMPLE_RATE, SYNTHESIS_SAMPLE_RATE};
 
 use super::{open_store, read_transcript, relative_to_root, resolve_id};
+
+#[cfg(test)]
+mod tests;
 
 /// Default synthesis engine identifier.
 pub const DEFAULT_SYNTHESIS_ENGINE: &str = "spqx-qwen3";
@@ -39,6 +44,14 @@ pub struct EnrollArgs {
     /// Derive a recognition profile ("who spoke")
     #[arg(long)]
     pub recognition: bool,
+    /// Recognition pooling; valid-v1 uses a separate, uncalibrated profile
+    #[arg(
+        long,
+        default_value = "uniform",
+        value_name = "uniform|valid-v1",
+        requires = "recognition"
+    )]
+    pub preprocessing: RecognitionPreprocessing,
     /// Derive a synthesis reference for this engine ("speak as them")
     #[arg(long, value_name = "ENGINE", num_args = 0..=1, default_missing_value = DEFAULT_SYNTHESIS_ENGINE)]
     pub synthesis: Option<String>,
@@ -95,7 +108,7 @@ pub fn run(args: &EnrollArgs, root: Option<&Path>, quiet: bool) -> Result<()> {
             .context("identity vanished during enrollment")?;
         attach_source(identity, &paths, args, &source, transcript.as_deref())?;
         if let Some(vector) = embedding.clone() {
-            attach_recognition(identity, &paths, &source, vector)?;
+            attach_recognition(identity, &paths, &source, vector, args.preprocessing)?;
         }
         if let Some(engine) = args.synthesis.as_deref() {
             let text = transcript
@@ -117,7 +130,8 @@ fn derive_embedding(args: &EnrollArgs, source: &Audio) -> Result<Option<Vec<f32>
         return Ok(None);
     }
     let mono16 = source.to_rate(RECOGNITION_SAMPLE_RATE)?;
-    let mut embedder = voqx_recognition::Embedder::new(&args.mode, None)?;
+    let mut embedder =
+        voqx_recognition::Embedder::new(&args.mode, None)?.with_preprocessing(args.preprocessing);
     Ok(Some(embedder.embed(&mono16.samples)?))
 }
 
@@ -174,8 +188,9 @@ fn attach_recognition(
     paths: &RegistryPaths,
     source: &Audio,
     embedding: Vec<f32>,
+    preprocessing: RecognitionPreprocessing,
 ) -> Result<()> {
-    let engine = recognition_engine();
+    let engine = preprocessing.engine_id();
     let mono16 = source.to_rate(RECOGNITION_SAMPLE_RATE)?;
     let existing = identity
         .recognition_profiles
@@ -185,7 +200,7 @@ fn attach_recognition(
     let sample_path = paths
         .identity_dir(&identity.id)
         .join("recognition")
-        .join(&engine)
+        .join(engine)
         .join(format!("sample-{index}.wav"));
     audio::write_wav(&sample_path, &mono16)?;
     let sample_rel = relative_to_root(paths, &sample_path)?;
@@ -194,7 +209,7 @@ fn attach_recognition(
         Some(i) => identity.recognition_profiles[i].add_samples(vec![embedding], vec![sample_rel]),
         None => identity.recognition_profiles.push(RecognitionProfile::new(
             engine,
-            recognition_model_version(),
+            preprocessing.model_version(),
             vec![embedding],
             vec![sample_rel],
         )),
@@ -216,13 +231,18 @@ fn attach_synthesis(
         .iter()
         .position(|p| p.engine == engine)
         .unwrap_or_else(|| {
-            identity.synthesis_profiles.push(SynthesisProfile::new(engine));
+            identity
+                .synthesis_profiles
+                .push(SynthesisProfile::new(engine));
             identity.synthesis_profiles.len() - 1
         });
 
     let profile = &mut identity.synthesis_profiles[position];
     let reference_id = format!("ref-{}", profile.references.len() + 1);
-    let dir = paths.identity_dir(&identity.id).join("synthesis").join(engine);
+    let dir = paths
+        .identity_dir(&identity.id)
+        .join("synthesis")
+        .join(engine);
     let audio_path = dir.join(format!("{reference_id}.wav"));
     let text_path = dir.join(format!("{reference_id}.txt"));
     audio::write_wav(&audio_path, &resampled)?;
@@ -278,7 +298,11 @@ pub fn run_references(command: ReferencesCommand, root: Option<&Path>, json: boo
                 return Ok(());
             }
             for profile in &identity.synthesis_profiles {
-                println!("{} ({} references)", profile.engine, profile.references.len());
+                println!(
+                    "{} ({} references)",
+                    profile.engine,
+                    profile.references.len()
+                );
                 for reference in &profile.references {
                     println!(
                         "  {}{:<14} {:<8} {:.1}s  {}",
@@ -300,26 +324,11 @@ fn write_text(path: &Path, text: &str) -> Result<()> {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("creating {}", parent.display()))?;
     }
-    std::fs::write(path, format!("{text}\n"))
-        .with_context(|| format!("writing {}", path.display()))
+    std::fs::write(path, format!("{text}\n")).with_context(|| format!("writing {}", path.display()))
 }
 
 fn now_unix() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
-}
-
-#[cfg(feature = "recognition")]
-fn recognition_engine() -> String {
-    voqx_recognition::EMBEDDING_MODEL_ID.to_string()
-}
-
-#[cfg(not(feature = "recognition"))]
-fn recognition_engine() -> String {
-    "speakrs-wespeaker".to_string()
-}
-
-fn recognition_model_version() -> String {
-    "speakrs-0.4".to_string()
 }

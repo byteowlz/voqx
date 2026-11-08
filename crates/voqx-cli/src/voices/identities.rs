@@ -178,11 +178,7 @@ fn rename(store: &voqx_core::registry::RegistryStore, key: &str, name: &str) -> 
     Ok(())
 }
 
-fn remove(
-    store: &voqx_core::registry::RegistryStore,
-    key: &str,
-    purge_assets: bool,
-) -> Result<()> {
+fn remove(store: &voqx_core::registry::RegistryStore, key: &str, purge_assets: bool) -> Result<()> {
     let paths = store.paths().clone();
     let removed = store.edit(|registry| {
         let id = resolve_id(registry, key)?;

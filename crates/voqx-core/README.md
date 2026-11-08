@@ -1,8 +1,7 @@
 # voqx-core
 
 Pure-Rust library for the shared Voice Identity registry. See the
-[repository README](../../README.md) and
-[ADR 0001](../../docs/adr/0001-voice-identity-model.md).
+[repository README](../../README.md).
 
 No ML dependencies: this crate owns the identity model, the on-disk format, cosine
 matching, XDG path resolution, and atomic + lock-guarded persistence. Producing

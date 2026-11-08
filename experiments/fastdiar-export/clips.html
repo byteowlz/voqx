@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en" data-scheme="oqto-dark">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark"><title>Who is speaking? · speaker clip test</title>
+<link rel="stylesheet" href="/tokens.css"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/live.css"><link rel="stylesheet" href="/clips.css">
+<script type="module" src="/clips.mjs"></script>
+</head>
+<body>
+<header><span>voqx · temporary speaker test</span><nav aria-label="Tests"><a href="/">Own voice</a><a href="/clips" aria-current="page">Clips</a></nav><span>Browser CPU · no uploads</span></header>
+<main>
+<h1>Who is speaking?</h1>
+<p class="intro">Name the people in a clip, take a short reference while each one talks, then play it back.</p>
+<p class="privacy">Clips, references and results stay in this tab. Nothing is uploaded or saved; refresh clears everything.</p>
+
+<section class="input" aria-labelledby="clip-heading">
+<h2 id="clip-heading">1 · Clip</h2>
+<div class="actions"><label class="file-button">Choose audio or video<input id="file" type="file" accept="audio/*,video/*"></label><button id="demo" disabled>Load demo clip</button></div>
+<p id="clip-name" class="hint">No clip loaded. The demo has three fictional synthetic voices taking turns.</p>
+<div id="player"></div>
+<p id="status" role="status" aria-live="polite">Loading the local CPU model…</p>
+<p id="error" role="alert" hidden></p>
+</section>
+
+<section class="input" aria-labelledby="speakers-heading">
+<div class="result-head"><h2 id="speakers-heading">2 · Speakers</h2><span id="speaker-count">0 / 8</span></div>
+<form id="add-form" class="actions"><label for="name">Name</label><input id="name" maxlength="40" autocomplete="off" placeholder="e.g. Anna"><button class="primary" type="submit" id="add" disabled>Add speaker</button></form>
+<ul id="speakers" class="speakers"><li class="hint">No speakers yet.</li></ul>
+<p class="hint">Best: record references with the same microphone you test with. “Record wake word ×3” takes three short phrases; “Record sentence” takes 3 seconds of normal speech. From a clip: pause while only that person talks and choose “Reference from clip” (the 3 seconds before the playhead). References from a different microphone or room match worse. Only add people who agreed to this test.</p>
+</section>
+
+<section class="input" aria-labelledby="now-heading">
+<div class="result-head"><h2 id="now-heading">3 · Now speaking</h2><span>Exploratory thresholds · not identification</span></div>
+<p id="now" class="now" data-kind="pending" aria-live="polite">—</p>
+<p id="now-detail" class="hint"></p>
+<div id="scores" class="score-rows"></div>
+<div class="actions"><button id="analyze" disabled>Analyse whole clip</button><button id="stop-analysis" hidden>Stop analysis</button><span id="progress" class="hint" role="status"></span></div>
+<div class="actions"><div class="segmented" role="group" aria-label="Microphone mode"><button id="mode-phrase" aria-pressed="true">Per phrase</button><button id="mode-continuous" aria-pressed="false">Continuous</button></div><button id="mic" disabled>Listen with microphone</button><button id="mic-stop" hidden>Stop microphone</button><span id="mic-level" class="hint"></span></div>
+<p id="mode-hint" class="hint"></p>
+<ol id="phrases" class="phrases" aria-label="Recent phrases"></ol>
+</section>
+
+<section aria-labelledby="timeline-heading">
+<div class="result-head"><h2 id="timeline-heading">Timeline</h2><span id="timeline-note">Each block shows the newest 0.5 s of a 1.5 s window · click to seek</span></div>
+<div id="timeline" class="timeline"><p class="hint">Load a clip to see the timeline.</p></div>
+<div class="actions"><button id="json" disabled>Download JSON</button><button id="vtt" disabled>Download WebVTT</button></div>
+</section>
+
+<details class="more" id="settings"><summary>Matching settings (exploratory)</summary>
+<div class="settings">
+<label class="setting" for="confident"><span>Match threshold</span><input id="confident" type="range" min="0.2" max="0.9" step="0.01"><output id="confident-value"></output></label>
+<label class="setting" for="tentative"><span>“Maybe” threshold</span><input id="tentative" type="range" min="0.1" max="0.9" step="0.01"><output id="tentative-value"></output></label>
+<label class="setting" for="margin"><span>Lead over runner-up</span><input id="margin" type="range" min="0" max="0.3" step="0.01"><output id="margin-value"></output></label>
+<label class="setting" for="stable"><span>Stable after</span><input id="stable" type="range" min="0.5" max="3" step="0.5"><output id="stable-value"></output></label>
+<label class="setting" for="vad"><span>Speech probability</span><input id="vad" type="range" min="0.1" max="0.95" step="0.05"><output id="vad-value"></output></label>
+<label class="setting" for="speech"><span>Speech in window</span><input id="speech" type="range" min="0.2" max="0.9" step="0.05"><output id="speech-value"></output></label>
+</div>
+<div class="actions"><button id="reset-settings">Reset to defaults</button></div>
+<p class="hint">A name is shown only when the best speaker clears the match threshold, leads the runner-up by the margin, and stays the same for the stable time. Defaults come from a small pilot, not a qualified operating point. Changes apply instantly to everything already analysed. Speech detection uses Silero VAD, the same pinned model as eaRS: a window is only compared with your speakers when enough of it is speech, so silence, music and noise are skipped. Raise “Speech in window” to skip more speaker changes and pauses.</p>
+</details>
+<p class="caution">Experimental. Scores are cosine similarities, not probabilities. Overlapping voices and voices not in your list can be mislabelled or shown as unknown. A recording of an enrolled voice can match. This is not authentication or permission.</p>
+<footer><p id="model-info">Silero VAD (as in eaRS) and FASTDIAR-small encoder on WASM CPU, one thread each · matching and stabilisation by the voqx Rust/WASM library · nothing persisted.</p></footer>
+</main>
+</body></html>

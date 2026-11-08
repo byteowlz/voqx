@@ -63,7 +63,14 @@ hound = "3"
 rubato = "0.16"
 # ONNX Runtime + system OpenBLAS; CPU everywhere. Acceleration is layered as a
 # cargo feature (see crates/voqx-recognition/Cargo.toml).
-speakrs = { version = "0.4", default-features = false, features = ["online", "openblas-system"] }
+# Audio observation metadata mirrors this implementation's 160000-sample window.
+# Reverify padding/truncation semantics before updating it.
+speakrs = { version = "=0.4.2", default-features = false, features = ["online", "openblas-system"] }
+
+# Optional native speaker runtime and portable speaker bindings.
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "download-binaries", "copy-dylibs", "tls-rustls"] }
+sha2 = "0.10"
+wasm-bindgen = "=0.2.130"
 
 # Internal crates
 voqx-core = { path = "crates/voqx-core" }

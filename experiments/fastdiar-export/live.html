@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en" data-scheme="oqto-dark">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark"><title>Speaker similarity test</title>
+<link rel="stylesheet" href="/tokens.css"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/live.css">
+<script type="module" src="/live.mjs"></script>
+</head>
+<body>
+<header><span>voqx · temporary speaker test</span><nav aria-label="Tests"><a href="/" aria-current="page">Own voice</a><a href="/clips">Clips</a></nav><span>Browser CPU · no uploads</span></header>
+<main>
+<h1>Try your voice</h1>
+<p class="intro">Capture a reference, then try a new sentence.</p>
+<p class="privacy">Audio and references stay in memory until refresh, without saving or uploads.</p>
+<section class="input" aria-labelledby="mic-heading">
+<h2 id="mic-heading">Microphone</h2>
+<div class="actions go"><button id="reference" class="primary" disabled>Capture my reference · 3 seconds</button><button id="start" disabled>Start microphone</button><button id="stop" disabled>Stop</button></div>
+<p id="capture-progress" class="hint" role="status">Capture only your own voice. Add another reference for a different distance or speaking style.</p>
+<div class="score-row"><span class="score-name">Input level</span><meter id="level" min="0" max="0.2" value="0" aria-label="Microphone energy"></meter><output class="score-value" id="level-value">—</output></div>
+<p id="status" role="status" aria-live="polite">Loading the local CPU model…</p>
+<p id="error" role="alert" hidden></p>
+
+<div class="result-head"><h2 id="score-heading">Similarity</h2><span>Uncalibrated · not a probability</span></div>
+<div class="score-rows">
+<div class="score-row"><span class="score-name">Best reference</span><meter id="nearest-meter" min="-1" max="1" value="-1" aria-label="Best reference cosine similarity"></meter><output class="score-value" id="nearest">—</output></div>
+<div class="score-row"><span class="score-name">Reference centroid</span><meter id="centroid-meter" min="-1" max="1" value="-1" aria-label="Reference centroid cosine similarity"></meter><output class="score-value" id="centroid">—</output></div>
+</div>
+<div class="actions"><button id="check" disabled>Check last 1.52 seconds</button><label class="check"><input id="auto" type="checkbox" checked>Update every 2 seconds</label></div>
+<p id="score-note" class="hint">Capture a reference first, then say something new. No identity or acceptance decision is made.</p>
+<p id="timing" class="hint"></p>
+</section>
+<section class="input" aria-labelledby="reference-heading">
+<div class="result-head"><h2 id="reference-heading">Temporary references</h2><span id="reference-count">0 / 7</span></div>
+<ul id="reference-list"><li>No reference yet. Say a short sentence after pressing Capture.</li></ul>
+<div class="actions"><button id="clear" disabled>Clear references and stop</button></div>
+<p class="hint">Up to seven references in this tab only. More references can also increase false matches.</p>
+</section>
+<details class="more"><summary>Try local audio files instead</summary>
+<p class="hint">Files stay on your device. Reference: first 3.04 seconds; query: first 1.52 seconds. Both need at least 1.52 seconds. No trimming or speech detection.</p>
+<label>Audio file <input id="file" type="file" accept="audio/*"></label>
+<div class="actions"><button id="file-reference" disabled>Use file as reference</button><button id="file-check" disabled>Check file</button></div>
+</details>
+<p class="caution">These scores are experimental. A recording of your voice can match. Similarity is not authentication, permission, or proof that someone addressed an assistant. A quiet level is not a speech detector.</p>
+<footer><p id="model-info">FASTDIAR-small · 192 dimensions · 80 ms frames · WASM CPU, one thread. No audio, vectors or results are persisted.</p></footer>
+</main>
+</body></html>

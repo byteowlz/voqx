@@ -2,16 +2,16 @@
 //! recognition, and importers for existing tool-local stores.
 
 pub mod enroll;
-pub mod identities;
-pub mod import;
 #[cfg(feature = "recognition")]
 pub mod identify;
+pub mod identities;
+pub mod import;
 
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
-use voqx_core::registry_paths::RegistryPaths;
 use voqx_core::registry::RegistryStore;
+use voqx_core::registry_paths::RegistryPaths;
 use voqx_core::{VoiceIdentity, VoiceRegistry};
 
 /// Open the registry store, honouring an explicit root override.

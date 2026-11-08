@@ -137,35 +137,63 @@ impl VoiceRegistry {
     ///
     /// Returns [`crate::recognition::RecognitionStatus::IncompatibleModel`] when
     /// no identity has a recognition profile for `engine`. Otherwise returns the
-    /// best-matching identity, its cosine score, and the classified status —
-    /// evidence only, never authorization.
+    /// best identity by nearest enrolled sample, both sample/centroid scores,
+    /// and the classified status. Centroid-only legacy profiles use their
+    /// centroid. Invalid comparisons are skipped; no usable comparisons yields
+    /// `Unknown`. Thresholds need recalibration for this scoring strategy.
+    /// Evidence only, never authorization.
     #[must_use]
     pub fn identify(&self, embedding: &[f32], engine: &str, thresholds: Thresholds) -> Recognition {
-        let mut best: Option<(&VoiceIdentity, f32)> = None;
+        let mut best = Recognition::unknown(engine);
         let mut engine_seen = false;
         for identity in &self.identities {
-            if let Some(profile) = identity.recognition_profile(engine) {
-                engine_seen = true;
-                let score = cosine(&profile.centroid, embedding);
-                if best.is_none_or(|(_, s)| score > s) {
-                    best = Some((identity, score));
-                }
+            let Some(profile) = identity.recognition_profile(engine) else {
+                continue;
+            };
+            engine_seen = true;
+            let score_centroid = valid_cosine(&profile.centroid, embedding);
+            let score_sample = profile
+                .embeddings
+                .iter()
+                .filter_map(|sample| valid_cosine(sample, embedding))
+                .reduce(f32::max);
+            let candidate = if profile.embeddings.is_empty() {
+                score_centroid
+            } else {
+                score_sample
+            };
+            if let Some(score) = candidate
+                && best.score.is_none_or(|previous| score > previous)
+            {
+                best = Recognition {
+                    voice_id: Some(identity.id.clone()),
+                    display_name: Some(identity.display_name.clone()),
+                    engine: engine.to_string(),
+                    score: Some(score),
+                    score_sample,
+                    score_centroid,
+                    audio: None,
+                    status: thresholds.classify(score),
+                };
             }
         }
-        if !engine_seen {
-            return Recognition::incompatible(engine);
-        }
-        match best {
-            Some((identity, score)) => Recognition {
-                voice_id: Some(identity.id.clone()),
-                display_name: Some(identity.display_name.clone()),
-                engine: engine.to_string(),
-                score: Some(score),
-                status: thresholds.classify(score),
-            },
-            None => Recognition::incompatible(engine),
+        if engine_seen {
+            best
+        } else {
+            Recognition::incompatible(engine)
         }
     }
+}
+
+/// Invalid vectors are not zero-similarity candidates: they must not outrank
+/// valid negative cosines or turn malformed enrollment into a match.
+fn valid_cosine(a: &[f32], b: &[f32]) -> Option<f32> {
+    let valid = |v: &[f32]| v.iter().all(|x| x.is_finite()) && v.iter().any(|x| *x != 0.0);
+    if a.len() != b.len() || !valid(a) || !valid(b) {
+        return None;
+    }
+    let score = cosine(a, b);
+    score.is_finite().then(|| score.clamp(-1.0, 1.0))
 }
 
 /// A registry bound to a filesystem location, offering lock-guarded mutation.
@@ -228,7 +256,7 @@ mod tests {
     use super::{RegistryStore, VoiceRegistry};
     use crate::atomic::LockGuard;
     use crate::identity::RecognitionProfile;
-    use crate::recognition::{RecognitionStatus, Thresholds};
+    use crate::recognition::{Recognition, RecognitionStatus, Thresholds};
     use crate::registry_paths::RegistryPaths;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -290,6 +318,166 @@ mod tests {
         let other_engine = registry.identify(&[1.0, 0.0, 0.0], "other-engine", thresholds);
         assert_eq!(other_engine.status, RecognitionStatus::IncompatibleModel);
         assert!(other_engine.voice_id.is_none());
+    }
+
+    #[test]
+    fn identify_preserves_distinct_enrollment_conditions() {
+        let mut owner = crate::VoiceIdentity::new("vox-owner", "Owner");
+        owner.recognition_profiles.push(RecognitionProfile::new(
+            "test-engine",
+            "v1",
+            vec![vec![1.0, 0.0, 0.0], vec![0.0, 1.0, 0.0]],
+            vec![],
+        ));
+        let mut unrelated = crate::VoiceIdentity::new("vox-unrelated", "Unrelated");
+        unrelated.recognition_profiles.push(RecognitionProfile::new(
+            "test-engine",
+            "v1",
+            vec![vec![0.6, 0.8, 0.0]],
+            vec![],
+        ));
+        let registry = VoiceRegistry {
+            identities: vec![unrelated, owner],
+            ..VoiceRegistry::default()
+        };
+        for query in [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]] {
+            let hit = registry.identify(&query, "test-engine", Thresholds::default());
+            let centroid = crate::centroid(&[vec![1.0, 0.0, 0.0], vec![0.0, 1.0, 0.0]]);
+            assert_eq!(
+                hit,
+                Recognition {
+                    voice_id: Some("vox-owner".into()),
+                    display_name: Some("Owner".into()),
+                    engine: "test-engine".into(),
+                    score: Some(1.0),
+                    score_sample: Some(1.0),
+                    score_centroid: Some(crate::cosine(&centroid, &query)),
+                    audio: None,
+                    status: RecognitionStatus::Confident,
+                }
+            );
+            // Analytic scoring margin, not a claim about real acoustic accuracy.
+            assert!(1.0 - crate::cosine(&[0.6, 0.8, 0.0], &query) > 0.19);
+        }
+    }
+
+    #[test]
+    fn single_sample_cannot_recover_an_unrepresented_condition() {
+        let (registry, _) = registry_with_tommy();
+        let query = [0.0, 1.0, 0.0];
+        let hit = registry.identify(&query, "speakrs-wespeaker", Thresholds::default());
+        assert_eq!(
+            hit,
+            Recognition {
+                voice_id: Some("vox-tommy".into()),
+                display_name: Some("Tommy".into()),
+                engine: "speakrs-wespeaker".into(),
+                score: Some(0.0),
+                score_sample: Some(0.0),
+                score_centroid: Some(0.0),
+                audio: None,
+                status: RecognitionStatus::Unknown,
+            }
+        );
+    }
+
+    #[test]
+    fn centroid_only_legacy_profile_retains_matching() {
+        let (mut registry, _) = registry_with_tommy();
+        registry.identities[0].recognition_profiles[0]
+            .embeddings
+            .clear();
+        let hit = registry.identify(&[1.0, 0.0, 0.0], "speakrs-wespeaker", Thresholds::default());
+        assert_eq!(
+            hit,
+            Recognition {
+                voice_id: Some("vox-tommy".into()),
+                display_name: Some("Tommy".into()),
+                engine: "speakrs-wespeaker".into(),
+                score: Some(1.0),
+                score_sample: None,
+                score_centroid: Some(1.0),
+                audio: None,
+                status: RecognitionStatus::Confident,
+            }
+        );
+    }
+
+    #[test]
+    fn invalid_vectors_never_become_matches() {
+        let (mut registry, _) = registry_with_tommy();
+        for query in [
+            vec![],
+            vec![1.0],
+            vec![0.0; 3],
+            vec![f32::NAN; 3],
+            vec![f32::INFINITY; 3],
+        ] {
+            assert_eq!(
+                registry.identify(&query, "speakrs-wespeaker", Thresholds::default()),
+                Recognition::unknown("speakrs-wespeaker")
+            );
+        }
+        for sample in [
+            vec![],
+            vec![1.0],
+            vec![0.0; 3],
+            vec![f32::NAN; 3],
+            vec![f32::INFINITY; 3],
+        ] {
+            // A stale, valid centroid must not rescue invalid per-sample data.
+            registry.identities[0].recognition_profiles[0].embeddings = vec![sample];
+            assert_eq!(
+                registry.identify(&[1.0, 0.0, 0.0], "speakrs-wespeaker", Thresholds::default()),
+                Recognition::unknown("speakrs-wespeaker")
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_samples_do_not_outrank_valid_negative_cosines() {
+        let (mut registry, _) = registry_with_tommy();
+        let profile = &mut registry.identities[0].recognition_profiles[0];
+        profile.embeddings = vec![vec![], vec![f32::NAN; 3], vec![1.0, 0.0, 0.0]];
+        let hit = registry.identify(
+            &[-1.0, 0.0, 0.0],
+            "speakrs-wespeaker",
+            Thresholds::default(),
+        );
+        assert_eq!(
+            hit,
+            Recognition {
+                voice_id: Some("vox-tommy".into()),
+                display_name: Some("Tommy".into()),
+                engine: "speakrs-wespeaker".into(),
+                score: Some(-1.0),
+                score_sample: Some(-1.0),
+                score_centroid: Some(-1.0),
+                audio: None,
+                status: RecognitionStatus::Unknown,
+            }
+        );
+    }
+
+    #[test]
+    fn pruning_changes_the_nearest_sample_score() {
+        let (mut registry, _) = registry_with_tommy();
+        let profile = &mut registry.identities[0].recognition_profiles[0];
+        profile.add_samples(vec![vec![0.0, 1.0, 0.0]], vec![]);
+        let query = [0.0, 1.0, 0.0];
+        assert_eq!(
+            registry
+                .identify(&query, "speakrs-wespeaker", Thresholds::default())
+                .score,
+            Some(1.0)
+        );
+        registry.identities[0].recognition_profiles[0].remove_sample(1);
+        assert_eq!(
+            registry
+                .identify(&query, "speakrs-wespeaker", Thresholds::default())
+                .score,
+            Some(0.0)
+        );
     }
 
     #[test]

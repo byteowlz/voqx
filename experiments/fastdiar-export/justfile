@@ -1,0 +1,34 @@
+live artifacts ort_dist capture tokens resampler port='8067':
+    bun live-server.mjs --artifacts '{{artifacts}}' --ort '{{ort_dist}}' --capture '{{capture}}' --tokens '{{tokens}}' --resampler '{{resampler}}' --port '{{port}}'
+
+# Adds /clips: named speakers, clip/microphone attribution. speaker_wasm = `just speaker-wasm-build` output.
+# vad = directory with silero_vad.onnx pinned at snakers4/silero-vad@066409f3 (same as eaRS).
+live-clips artifacts ort_dist capture tokens resampler speaker_wasm vad demo port='8067':
+    bun live-server.mjs --artifacts '{{artifacts}}' --ort '{{ort_dist}}' --capture '{{capture}}' --tokens '{{tokens}}' --resampler '{{resampler}}' --speaker-wasm '{{speaker_wasm}}' --vad '{{vad}}' --demo '{{demo}}' --port '{{port}}'
+
+# Synthetic turn-taking demo from a fictional VoiceDesign bank; OUT must not exist.
+demo-clip bank out:
+    uv run --no-project python make_demo_clip.py --bank '{{bank}}' --out '{{out}}'
+
+# Requires LIVE_BASE_URL, DEMO_DIR, PLAYWRIGHT, CHROMIUM and a NEW EVIDENCE_DIR.
+clips-check:
+    bun clips-check.mjs
+
+live-check:
+    bun live-check.mjs
+
+speaker-check artifacts reference query:
+    uv run --offline python speaker_file.py --artifacts '{{artifacts}}' --reference '{{reference}}' --query '{{query}}'
+
+test:
+    uv run --offline python -m unittest -v
+    bun test
+
+export source checkpoint out:
+    OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=1 uv run --offline python export_step.py --source '{{source}}' --checkpoint '{{checkpoint}}' --out '{{out}}'
+
+cohort artifacts ort_dist source registered fastdiar_source checkpoint evidence:
+    bun browser-check.mjs --cohort --artifacts '{{artifacts}}' --ort '{{ort_dist}}' --source '{{source}}' --registered '{{registered}}' --fastdiar-source '{{fastdiar_source}}' --checkpoint '{{checkpoint}}' --evidence '{{evidence}}'
+
+browser artifacts ort_dist evidence:
+    bun browser-check.mjs --artifacts '{{artifacts}}' --ort '{{ort_dist}}' --evidence '{{evidence}}'

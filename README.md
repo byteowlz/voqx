@@ -9,9 +9,8 @@ of aliases, and any number of engine-specific profiles:
 - **synthesis** profiles (TTS references/performances) — *speak as them*
 - **wake** profiles (personalized wake/command phrases) — *they said the wake word*
 
-Identity is by stable `voice_id`, never by display name. See
-[`docs/adr/0001-voice-identity-model.md`](docs/adr/0001-voice-identity-model.md) and
-[`CONTEXT.md`](CONTEXT.md).
+Identity is by stable `voice_id`, never by display name. Profiles are engine-scoped:
+vectors from different models, preprocessing contracts or dimensions are never mixed.
 
 ## Crates
 

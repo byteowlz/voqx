@@ -345,6 +345,9 @@ mod tests {
             duration_seconds: 0.0,
             sample_rate: 0,
         });
-        assert_eq!(profile.default_reference().map(|r| r.id.as_str()), Some("b"));
+        assert_eq!(
+            profile.default_reference().map(|r| r.id.as_str()),
+            Some("b")
+        );
     }
 }

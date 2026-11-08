@@ -1,6 +1,9 @@
 //! voqx CLI: manage the shared Voice Identity registry.
 
 mod audio;
+mod capabilities;
+#[cfg(test)]
+mod preprocessing_tests;
 mod voices;
 
 use std::env;
@@ -24,6 +27,10 @@ fn main() -> anyhow::Result<()> {
 
 fn try_main() -> Result<()> {
     let cli = Cli::parse();
+    // Discovery must work even with missing/invalid config and no models or registry.
+    if matches!(cli.command, Command::Capabilities) {
+        return capabilities::run(cli.common.yaml);
+    }
 
     let ctx = RuntimeContext::new(cli.common.clone())?;
     ctx.init_logging()?;
@@ -32,6 +39,7 @@ fn try_main() -> Result<()> {
     let registry_root = cli.common.registry.clone();
     let json = cli.common.json;
     match cli.command {
+        Command::Capabilities => capabilities::run(cli.common.yaml),
         Command::Run(cmd) => handle_run(&ctx, cmd),
         Command::Init(cmd) => handle_init(&ctx, cmd),
         Command::Config { command } => handle_config(&ctx, command),
@@ -48,10 +56,15 @@ fn try_main() -> Result<()> {
             voices::import::run(command, registry_root.as_deref(), ctx.common.quiet)
         }
         #[cfg(feature = "recognition")]
-        Command::Identify { audio, mode } => voices::identify::run(
+        Command::Identify {
+            audio,
+            mode,
+            preprocessing,
+        } => voices::identify::run(
             &audio,
             registry_root.as_deref(),
             &mode,
+            preprocessing,
             voqx_core::Thresholds::default(),
             json,
         ),
@@ -145,6 +158,8 @@ pub enum ColorOption {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Print versioned build capabilities without reading config, models or the registry
+    Capabilities,
     /// Execute the CLI's primary behavior
     Run(RunCommand),
     /// Create config directories and default files
@@ -179,6 +194,9 @@ enum Command {
         /// Execution mode (cpu, coreml, cuda)
         #[arg(long, default_value = "cpu")]
         mode: String,
+        /// Recognition pooling; must match enrollment, scores remain uncalibrated
+        #[arg(long, default_value = "uniform", value_name = "uniform|valid-v1")]
+        preprocessing: voqx_core::RecognitionPreprocessing,
     },
     /// Generate shell completions
     Completions {

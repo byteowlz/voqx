@@ -38,7 +38,10 @@ pub fn router(state: RegistryState) -> Router {
         .route("/api/registry", get(list_identities))
         .route("/api/identities/{voice_id}", get(get_identity))
         .route("/api/identities/{voice_id}/rename", post(rename_identity))
-        .route("/api/identities/{voice_id}/samples/{index}", post(drop_sample))
+        .route(
+            "/api/identities/{voice_id}/samples/{index}",
+            post(drop_sample),
+        )
         .route("/api/analysis", get(get_analysis))
         .route("/api/audio", get(get_audio))
         .with_state(state)
@@ -66,7 +69,11 @@ impl ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (self.status, Json(serde_json::json!({ "error": self.message }))).into_response()
+        (
+            self.status,
+            Json(serde_json::json!({ "error": self.message })),
+        )
+            .into_response()
     }
 }
 
@@ -158,9 +165,11 @@ async fn get_analysis(
 ) -> Result<Json<AnalysisResponse>, ApiError> {
     let registry = state.store.load().map_err(|e| ApiError::internal(&e))?;
     let engine = query.engine.unwrap_or_else(|| DEFAULT_ENGINE.to_string());
-    let options = query.weak_below.map_or_else(AnalysisOptions::default, |weak_below| {
-        AnalysisOptions { weak_below }
-    });
+    let options = query
+        .weak_below
+        .map_or_else(AnalysisOptions::default, |weak_below| AnalysisOptions {
+            weak_below,
+        });
 
     Ok(Json(AnalysisResponse {
         analyses: analyze_registry(&registry, &engine, options),
@@ -233,7 +242,9 @@ async fn drop_sample(
         let _ = std::fs::remove_file(path);
     }
 
-    Ok(Json(serde_json::json!({ "ok": true, "removed_audio": removed })))
+    Ok(Json(
+        serde_json::json!({ "ok": true, "removed_audio": removed }),
+    ))
 }
 
 /// Query for `GET /api/audio`.
@@ -248,9 +259,8 @@ async fn get_audio(
     Query(query): Query<AudioQuery>,
 ) -> Result<Response, ApiError> {
     let root = state.store.paths().root.clone();
-    let path = safe_join(&root, &query.path).ok_or_else(|| {
-        ApiError::new(StatusCode::BAD_REQUEST, "path escapes the registry root")
-    })?;
+    let path = safe_join(&root, &query.path)
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "path escapes the registry root"))?;
     let bytes = std::fs::read(&path)
         .map_err(|err| ApiError::new(StatusCode::NOT_FOUND, err.to_string()))?;
     Ok(([(header::CONTENT_TYPE, "audio/wav")], bytes).into_response())

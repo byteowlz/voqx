@@ -15,3 +15,8 @@ ui/dist/
 
 # pi agent session-local state
 .pi/todos/
+
+# Central trx migration state is machine-local (may contain private absolute paths).
+.trx/central
+.trx/MIGRATED
+.trx/*.migrated-*

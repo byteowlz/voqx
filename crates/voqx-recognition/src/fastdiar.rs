@@ -27,6 +27,8 @@ pub const STEP_SAMPLES: usize = 1280;
 pub const DIMENSIONS: usize = 192;
 /// Independent-window profile slot, not a continuous-stream calibration mode.
 pub const ENGINE_ID: &str = "fastdiar-small-cold80-mean-f32-v1";
+/// Opt-in variable-duration phrase profile; never aliases the legacy window slot.
+pub const PHRASE_ENGINE_ID: &str = "fastdiar-small-cold80-phrase-f32-v1";
 
 /// Descriptor including graph hash, reset cadence, FP64 pooling and f32 storage.
 ///
@@ -43,6 +45,39 @@ pub fn embedding_space() -> EmbeddingSpace {
         minimum_samples: 24_320,
         maximum_samples: 160_000,
     }
+}
+
+/// Describe an opt-in phrase duration band in the 16 kHz source clock.
+///
+/// The 80 ms structural floor is one model frame, not a reliability recommendation.
+/// Bounds are included in the model version as well as the snapshot fingerprint,
+/// so canonical profiles and operating points cannot silently cross duration bands.
+/// Reset, final-frame padding and pooling are identical to the legacy encoder.
+///
+/// # Errors
+/// Rejects bands shorter than one frame, reversed bands and ceilings above ten seconds.
+pub fn phrase_embedding_space(
+    minimum_samples: usize,
+    maximum_samples: usize,
+) -> SpeakerResult<EmbeddingSpace> {
+    if !(STEP_SAMPLES..=160_000).contains(&minimum_samples)
+        || !(minimum_samples..=160_000).contains(&maximum_samples)
+    {
+        return Err(SpeakerError::InvalidProfile(
+            "phrase bounds must satisfy 1280 <= minimum <= maximum <= 160000 at 16 kHz",
+        ));
+    }
+    let legacy = embedding_space();
+    Ok(EmbeddingSpace {
+        engine: PHRASE_ENGINE_ID.to_owned(),
+        model_version: format!(
+            "{}:phrase-v1:{minimum_samples}-{maximum_samples}",
+            legacy.model_version
+        ),
+        minimum_samples,
+        maximum_samples,
+        ..legacy
+    })
 }
 
 struct StateSlot {
@@ -354,9 +389,31 @@ impl FastdiarWindowEncoder {
     /// # Errors
     /// Propagates graph/runtime/hash verification failures.
     pub fn load(path: &Path) -> SpeakerResult<Self> {
+        Self::load_space(path, embedding_space())
+    }
+
+    /// Load the same pinned graph with an explicitly chosen short-phrase contract.
+    ///
+    /// Samples and references must use the returned exact space. No thresholds,
+    /// enrollment, VAD or production admission are enabled by selecting a duration.
+    ///
+    /// # Errors
+    /// Rejects invalid bounds before loading; propagates graph/runtime/hash failures.
+    pub fn load_phrase(
+        path: &Path,
+        minimum_samples: usize,
+        maximum_samples: usize,
+    ) -> SpeakerResult<Self> {
+        Self::load_space(
+            path,
+            phrase_embedding_space(minimum_samples, maximum_samples)?,
+        )
+    }
+
+    fn load_space(path: &Path, space: EmbeddingSpace) -> SpeakerResult<Self> {
         Ok(Self {
             encoder: FastdiarEncoder::load(path)?,
-            space: embedding_space(),
+            space,
         })
     }
 }
@@ -373,7 +430,7 @@ impl WindowEncoder for FastdiarWindowEncoder {
             || samples.iter().all(|value| *value == 0.0)
         {
             return Err(SpeakerError::InvalidInput(
-                "expected a finite, nonsilent 1.52–10 second observation",
+                "expected finite, nonsilent PCM within the selected profile duration band",
             ));
         }
         self.encoder.reset()?;

@@ -41,5 +41,9 @@ cuda = ["wespeaker", "speakrs/cuda"]
 hound.workspace = true
 tempfile = "3"
 
+[[example]]
+name = "speaker_phrase"
+required-features = ["fastdiar"]
+
 [lints]
 workspace = true

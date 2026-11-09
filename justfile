@@ -82,7 +82,7 @@ test-one TEST:
 
 # Portable and FASTDIAR-only tests; no standalone recognition tool is installed.
 test-speaker:
-    cargo test --locked -p voqx-recognition --no-default-features --features fastdiar,registry
+    cargo test --locked -p voqx-recognition --no-default-features --features fastdiar,registry --all-targets
 
 # Compile/lint library targets and the portable WASM target.
 check-speaker:
@@ -93,6 +93,14 @@ check-speaker:
 # Explicit generated-signal fixture; no model download or private recordings.
 test-speaker-model MODEL FIXTURES:
     VOQX_FASTDIAR_MODEL="{{MODEL}}" VOQX_FASTDIAR_FIXTURE="{{FIXTURES}}" cargo test --locked -p voqx-recognition --no-default-features --features fastdiar,registry --test fastdiar_cpu -- --ignored --nocapture
+
+# Local short-phrase tuning; explicit WAVs and thresholds, no persistence or defaults.
+speaker-phrase MODEL JOB AUDIO:
+    cargo run --locked -p voqx-recognition --no-default-features --features fastdiar --example speaker_phrase -- "{{MODEL}}" "{{JOB}}" "{{AUDIO}}"
+
+# Generated signals only; proves short inference and reset, not speaker accuracy.
+test-speaker-phrase-model MODEL:
+    VOQX_FASTDIAR_MODEL="{{MODEL}}" cargo test --locked -p voqx-recognition --no-default-features --features fastdiar,registry --test fastdiar_phrase -- --ignored --nocapture
 
 # wasm-bindgen CLI must match the pinned workspace dependency.
 speaker-wasm-build OUTPUT:

@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Tunable short-phrase speaker profiles
+
+- Adds opt-in `FastdiarWindowEncoder::load_phrase` and `phrase_embedding_space` with
+  caller-chosen duration bounds. The legacy 1.52 s profile remains unchanged; the
+  80 ms frame floor is structural, not a speaker-accuracy recommendation.
+- Uses a separate phrase profile slot and includes both bounds in its model version,
+  preventing old references/calibration from silently crossing duration settings.
+  Matching thresholds and margin remain explicit; missing policy abstains.
+- Adds `just speaker-phrase` for local WAV/reference/threshold tuning with JSON
+  scores and evidence, and `just test-speaker-phrase-model` for generated-signal
+  inference/reset proof. No live filtering, uploads, persistence or qualified
+  operating point is enabled. See `docs/speaker-library.md`.
+
 ### Clip speaker test page
 
 - Per-phrase microphone mode: Silero segments live speech (onset after 64 ms, end after a

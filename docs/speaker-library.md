@@ -65,6 +65,66 @@ state, preserve real silence, pad the final 80-ms frame and pool in FP64 before 
 storage. No prefix truncation or onset trimming occurs. Existing 256-dimensional
 WeSpeaker profiles and experimental FP64 banks are not this 192-dimensional profile.
 
+### Tunable short phrases (opt-in)
+
+The 1.52 s floor above is an operational choice, not a model requirement or a
+qualified accuracy boundary. For a caller-chosen band, use:
+
+```rust,ignore
+use voqx_recognition::fastdiar::FastdiarWindowEncoder;
+// 300 ms to 10 s in the 16 kHz source clock; no implicit threshold defaults.
+let encoder = FastdiarWindowEncoder::load_phrase(model_path, 4_800, 160_000)?;
+```
+
+`phrase_embedding_space(minimum_samples, maximum_samples)` returns the same exact
+descriptor without loading inference. The structural floor is one 80 ms frame;
+it is **not** a recommendation that 80 ms identifies a speaker reliably. Shorter
+phrases contain less voice evidence. Choose minimum duration, confident/tentative
+cosines, runner-up margin and numerical guard together on independent speakers and
+sessions, then freeze the policy before evaluating the holdout.
+
+The phrase engine slot is separate from the legacy window slot. Its model version
+also records both bounds, so changing either invalidates canonical reference
+profile compatibility and calibration. Rebuild references from consented sources
+for the selected band; never relabel old vectors to make them appear compatible.
+A changed operating point changes the evidence's calibration-content fingerprint.
+Missing thresholds still yield `Uncalibrated`, not a nearest-name guess. These are
+caller-controlled tuning parameters, not built-in production policy.
+
+For local development, write a job JSON (paths resolve against the command's
+working directory; WAVs must be mono 16 kHz, PCM16 or float32):
+
+```json
+{
+  "minimum_ms": 300,
+  "maximum_ms": 10000,
+  "voices": [
+    {"voice_id": "vox-consenting-person", "references": ["take-1.wav", "take-2.wav", "take-3.wav"]}
+  ]
+}
+```
+
+```sh
+just speaker-phrase "$PINNED_GRAPH" job.json short-phrase.wav
+just test-speaker-phrase-model "$PINNED_GRAPH"
+```
+
+The command emits JSON with diagnostic candidates, exact space, policy/reference
+fingerprints, source duration and compute time. It reads only explicit local files;
+there is no microphone, upload, enrollment write or saved audio/vector bank.
+`voices` is a temporary reference selection using caller-supplied canonical IDs,
+not a new registry. Unknown/overlap detection is not supplied by this speech probe.
+To try a decision rule, add an explicit `thresholds` object containing `confident`,
+`tentative`, `minimum_margin` and `numerical_guard`. All four are required; scores
+are cosines, not probabilities. The result is marked `local-tuning-not-qualified`.
+Short observations return `InsufficientAudio`; oversized input is rejected rather
+than truncated or padded to reach the configured minimum. Only the final model
+frame may receive structural padding, excluded from the source interval.
+
+This is a native library/development interface, not an enabled eaRS setting. The
+browser sandbox's older `:sandbox-phrase` space is also distinct; existing sandbox
+references or thresholds are not silently migrated.
+
 `recognition_profile(&reviewed_embeddings)` builds a recognition-only profile in
 memory. The host owns human review, consent, identity selection and atomic
 persistence. No audio retention, automatic enrollment or cloning is implied.

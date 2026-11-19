@@ -1,8 +1,9 @@
 # Reviewed registry migration
 
 The ML-free `registry_discovery::execute_migration` operation and CLI share the
-same plan validation, staging, recovery and receipt logic. See ADR 0004 for the
-writer-lock, no-overwrite and non-destructive abort trade-offs.
+same plan validation, staging, recovery and receipt logic. The design keeps the
+existing writer-lock protocol, never overwrites a published path, and treats abort
+as rollback of intent rather than deletion of bytes.
 
 ## Explicit local workflow
 

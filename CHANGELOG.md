@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Registry discovery, reviewed migration and validated imports
+
+- `voqx registry status` and `voqx registry migration-plan` inspect the source and
+  destination roots read-only, with exact SHA-256 inventories, directory entries
+  and conflict refusal. `voqx registry migrate` applies a reviewed, content-bound
+  plan with private staging, read-back verification, journal-backed explicit
+  resume and non-destructive abort; registry JSON is published last, and nothing
+  switches the default root. See `docs/registry-migration.md`.
+- `voqx voices enroll` emits `voqx-enrollment/1` receipts (JSON/YAML) with the
+  canonical `voice_id`, source id, selected derivatives and the exact committed
+  registry revision. Refusals are explicit, and a failed asset phase is reported
+  as an uncertain effect rather than a silent success.
+- `voqx import trnscrb` validates every reference vector (shared dimension, finite
+  values, nonzero norm, unit-L2 tolerance), refuses duplicate ids and name
+  collisions, counts missing or unreadable sample audio per speaker, and marks
+  imported provenance as `unverified-trnscrb-v1`, keeping those profiles out of
+  exact-space matching until verified or re-embedded. Import stays one-way.
+- `RecognitionProfile::add_samples` refuses incompatible appends atomically,
+  leaving embeddings, centroid and samples unchanged.
+
 ### Reusable browser CPU phrase library
 
 - Promotes the explicit-state CPU/WASM runtime and pooling out of sandbox-only code;

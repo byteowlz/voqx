@@ -43,6 +43,11 @@ voqx enroll snake --id spk-snake \
 voqx identify utterance.wav --json
 ```
 
+Import is one-way and validates every vector before writing. Imported trnscrb
+profiles keep their engine name but record `unverified-trnscrb-v1`, so they stay
+out of exact-space matching until verified or re-embedded; missing or unreadable
+sample audio is counted per speaker instead of dropped silently.
+
 Build without native ML dependencies: `cargo build -p voqx-cli --no-default-features`.
 
 ## Registry UI

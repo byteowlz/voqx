@@ -19,6 +19,7 @@ config.workspace = true
 schemars.workspace = true
 log.workspace = true
 shellexpand.workspace = true
+sha2.workspace = true
 
 [lints]
 workspace = true

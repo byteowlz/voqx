@@ -54,6 +54,14 @@ impl RegistryPaths {
     }
 }
 
+/// Proposed shared identity root; discovery only, not the active default.
+///
+/// # Errors
+/// Returns an error if no base directory can be determined.
+pub fn proposed_registry_root() -> Result<PathBuf> {
+    Ok(data_home_root()?.join("byteowlz/identity/voices"))
+}
+
 /// The default registry root (`$XDG_DATA_HOME/voice-registry`).
 ///
 /// # Errors

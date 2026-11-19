@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::atomic::{LockGuard, write_atomic};
 use crate::identity::VoiceIdentity;
@@ -70,8 +71,11 @@ impl VoiceRegistry {
     ///
     /// Returns an error if serialization or the atomic write fails.
     pub fn save(&self, paths: &RegistryPaths) -> Result<()> {
-        let body = serde_json::to_string_pretty(self).context("serializing registry")?;
-        write_atomic(&paths.registry_file, body.as_bytes())
+        write_atomic(&paths.registry_file, &self.encoded()?)
+    }
+
+    fn encoded(&self) -> Result<Vec<u8>> {
+        serde_json::to_vec_pretty(self).context("serializing registry")
     }
 
     /// Find an identity by exact `voice_id`.
@@ -196,6 +200,20 @@ fn valid_cosine(a: &[f32], b: &[f32]) -> Option<f32> {
     score.is_finite().then(|| score.clamp(-1.0, 1.0))
 }
 
+/// A successful lock-guarded registry mutation with the exact persisted revision.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegistryCommit<T> {
+    /// Value produced by the mutation.
+    pub value: T,
+    /// SHA-256 of the exact bytes committed while holding the writer lock.
+    pub revision: String,
+}
+
+/// An optimistic concurrency check refused a stale registry revision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("registry revision changed; inspect current state before retrying")]
+pub struct RegistryRevisionConflict;
+
 /// A registry bound to a filesystem location, offering lock-guarded mutation.
 #[derive(Debug, Clone)]
 pub struct RegistryStore {
@@ -242,12 +260,46 @@ impl RegistryStore {
     /// loading/saving fails, or `mutate` returns an error (in which case no
     /// changes are written).
     pub fn edit<T>(&self, mutate: impl FnOnce(&mut VoiceRegistry) -> Result<T>) -> Result<T> {
+        self.edit_with_revision(None, mutate)
+            .map(|commit| commit.value)
+    }
+
+    /// Mutate under the writer lock, optionally requiring an exact byte revision.
+    ///
+    /// The revision check happens before `mutate`; a mismatch cannot write assets
+    /// through the closure. Success describes this commit, not later writers or
+    /// model/calibration compatibility. No retry/idempotency guarantee is implied.
+    ///
+    /// # Errors
+    /// Returns an error on lock/load/save failure, closure failure, or a stale
+    /// expected revision (downcastable to [`RegistryRevisionConflict`]).
+    pub fn edit_with_revision<T>(
+        &self,
+        expected: Option<&str>,
+        mutate: impl FnOnce(&mut VoiceRegistry) -> Result<T>,
+    ) -> Result<RegistryCommit<T>> {
         let lock_path = self.paths.root.join(".lock");
         let _guard = LockGuard::acquire(&lock_path, LOCK_TIMEOUT)?;
         let mut registry = VoiceRegistry::load(&self.paths)?;
+        if let Some(expected) = expected {
+            let bytes = match std::fs::read(&self.paths.registry_file) {
+                Ok(bytes) => bytes,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    return Err(RegistryRevisionConflict.into());
+                }
+                Err(error) => return Err(error).context("reading expected registry revision"),
+            };
+            if format!("{:x}", Sha256::digest(&bytes)) != expected {
+                return Err(RegistryRevisionConflict.into());
+            }
+        }
         let value = mutate(&mut registry)?;
-        registry.save(&self.paths)?;
-        Ok(value)
+        let bytes = registry.encoded()?;
+        write_atomic(&self.paths.registry_file, &bytes)?;
+        Ok(RegistryCommit {
+            value,
+            revision: format!("{:x}", Sha256::digest(&bytes)),
+        })
     }
 }
 
@@ -463,7 +515,10 @@ mod tests {
     fn pruning_changes_the_nearest_sample_score() {
         let (mut registry, _) = registry_with_tommy();
         let profile = &mut registry.identities[0].recognition_profiles[0];
-        profile.add_samples(vec![vec![0.0, 1.0, 0.0]], vec![]);
+        profile
+            .add_samples(vec![vec![0.0, 1.0, 0.0]], vec![])
+            .ok()
+            .expect("fixture vectors are unit length");
         let query = [0.0, 1.0, 0.0];
         assert_eq!(
             registry

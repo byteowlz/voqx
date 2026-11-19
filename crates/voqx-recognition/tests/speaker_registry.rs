@@ -5,7 +5,7 @@
 mod support;
 use support::check_eq;
 
-use voqx_core::{RecognitionProfile, VoiceIdentity, VoiceRegistry};
+use voqx_core::{RecognitionProfile, Thresholds, VoiceIdentity, VoiceRegistry};
 use voqx_recognition::{
     speaker::{EmbeddingSpace, SpeakerEmbedding},
     speaker_registry::{recognition_profile, reference_snapshot},
@@ -71,6 +71,18 @@ fn stale_version_duplicate_slot_and_wrong_dimensions_are_rejected() {
         }
         assert!(reference_snapshot(&registry, &space(), &["vox-a"]).is_err());
     }
+}
+
+#[test]
+fn imported_unverified_provenance_stays_out_of_exact_space_selection() {
+    let mut registry = registry();
+    registry.identities[0].recognition_profiles[0].model_version = "unverified-trnscrb-v1".into();
+    // An imported trnscrb profile records no encoder revision, so exact-space
+    // selection must refuse it even when the engine name matches.
+    assert!(reference_snapshot(&registry, &space(), &["vox-a"]).is_err());
+    // The same vectors stay usable through the legacy engine-name matching path.
+    let recognition = registry.identify(&[1.0, 0.0], "fixture", Thresholds::default());
+    assert_eq!(recognition.voice_id.as_deref(), Some("vox-a"));
 }
 
 #[test]

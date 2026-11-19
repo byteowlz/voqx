@@ -15,6 +15,7 @@ function staticAssets({ root, artifacts, ortDist, captureRoot, tokens, resampler
     ['/tokens.css', tokens], ['/style.css', path.join(captureRoot, 'style.css')], ['/resampler.js', resampler],
   ]);
   for (const name of ['live.mjs', 'live-controller.mjs', 'live-worker.mjs', 'live-core.mjs', 'live.css', 'step-runtime.mjs', 'frame-pool.mjs', 'protocol.mjs', 'worker-rpc.mjs']) assets.set('/' + name, path.join(root, name));
+  for (const name of ['step-runtime.mjs', 'tensor-contract.mjs', 'frame-pool.mjs']) assets.set('/web/' + name, path.join(root, '../../web', name));
   // Optional clip page: needs the voqx-recognition WASM package and the pinned Silero VAD directory.
   if (speakerWasm && vad) {
     assets.set('/vad.onnx', path.join(vad, 'silero_vad.onnx'));

@@ -80,6 +80,12 @@ test-v:
 test-one TEST:
     cargo test --workspace {{TEST}}
 
+# Synthetic registry migration/recovery, importer and CLI contracts; no models or user data.
+test-registry-migration:
+    cargo test --locked -p voqx-core --test registry_migration
+    cargo test --locked -p voqx-cli --no-default-features --test registry_discovery
+    cargo test --locked -p voqx-cli --no-default-features --test voices_import
+
 # Portable and FASTDIAR-only tests; no standalone recognition tool is installed.
 test-speaker:
     cargo test --locked -p voqx-recognition --no-default-features --features fastdiar,registry --all-targets
@@ -101,6 +107,14 @@ speaker-phrase MODEL JOB AUDIO:
 # Generated signals only; proves short inference and reset, not speaker accuracy.
 test-speaker-phrase-model MODEL:
     VOQX_FASTDIAR_MODEL="{{MODEL}}" cargo test --locked -p voqx-recognition --no-default-features --features fastdiar,registry --test fastdiar_phrase -- --ignored --nocapture
+
+# No-fetch browser CPU phrase library and sandbox compatibility (generated fixtures).
+test-speaker-web:
+    bun test web experiments/fastdiar-export/*.test.mjs
+
+# Generated native vectors/evidence for the waqy browser integration proof.
+speaker-phrase-contract MODEL:
+    cargo run --locked -p voqx-recognition --no-default-features --features fastdiar --example phrase_contract -- "{{MODEL}}"
 
 # wasm-bindgen CLI must match the pinned workspace dependency.
 speaker-wasm-build OUTPUT:

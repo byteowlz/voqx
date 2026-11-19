@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Reusable browser CPU phrase library
+
+- Promotes the explicit-state CPU/WASM runtime and pooling out of sandbox-only code;
+  existing sandbox entrypoints remain thin compatibility wrappers.
+- Adds no-fetch `PhraseSpeaker` composition with the actual Rust/WASM matcher,
+  exact native phrase descriptors and caller-selected snapshots/policies. No
+  capture, enrollment, threshold defaults or filtering. Shared-worker ORT calls
+  must be serialized; native/browser generated-signal parity is not speaker accuracy.
+
 ### Tunable short-phrase speaker profiles
 
 - Adds opt-in `FastdiarWindowEncoder::load_phrase` and `phrase_embedding_space` with

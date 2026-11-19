@@ -19,6 +19,7 @@ if (await sha256(expectedBytes) !== manifest.expected_sha256) throw new Error('G
 const expected = new Float32Array(expectedBytes);
 const assets = new Map();
 for (const name of ['worker.mjs', 'page.mjs', 'protocol.mjs', 'step-runtime.mjs', 'frame-pool.mjs']) assets.set('/' + name, path.join(root, name));
+for (const name of ['step-runtime.mjs', 'tensor-contract.mjs', 'frame-pool.mjs']) assets.set('/web/' + name, path.join(root, '../../web', name));
 for (const name of ['encoder.onnx', 'manifest.json', 'input.f32']) assets.set('/' + name, path.join(artifacts, name));
 const ortNames = ['ort.wasm.min.mjs', 'ort-wasm-simd-threaded.mjs', 'ort-wasm-simd-threaded.wasm'];
 for (const name of ortNames) assets.set('/ort/' + name, path.join(path.resolve(values.ort), name));
@@ -159,6 +160,7 @@ try {
   report.rssSnapshots = checkpoints; report.workerHeapSnapshots = workerMemory; report.consoleWarnings = warnings;
   report.harnessHashes = {};
   for (const name of ['browser-check.mjs', 'worker.mjs', 'step-runtime.mjs', 'protocol.mjs', 'console-severity.mjs', 'page.mjs', 'frame-pool.mjs', 'cohort-runner.mjs']) report.harnessHashes[name] = await sha256(await Bun.file(path.join(root, name)).arrayBuffer());
+  for (const name of ['step-runtime.mjs', 'tensor-contract.mjs', 'frame-pool.mjs']) report.harnessHashes['web/' + name] = await sha256(await Bun.file(path.join(root, '../../web', name)).arrayBuffer());
   report.limits = ['Base parity fixtures are synthetic; optional registered real-owner/synthetic-non-target cohort results are reported separately', 'One desktop Chromium on the producing host; no phone/Safari/Firefox qualification', 'Renderer RSS includes browser/worker/runtime overhead and shared pages; not model-only or peak RAM. Worker heap/backing storage excludes some native/runtime overhead', 'Compute excludes audio acquisition; no microphone, enrollment, filtering or default changes'];
   await writeFile(path.join(evidence, 'report.json'), JSON.stringify(report, null, 2) + '\n');
   console.log(JSON.stringify({ evidence, checks: report.checks.length, microchunks: report.microchunks, resetJumbo: report.resetJumbo, query: report.query, workerHeapSnapshots: workerMemory, linearMemory: report.linearMemory, rssSnapshots: checkpoints }, null, 2));

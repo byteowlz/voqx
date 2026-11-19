@@ -18,6 +18,10 @@ struct Capabilities {
     version: &'static str,
     recognition: RecognitionCapabilities,
     registry_inspection_json: bool,
+    registry_discovery_json: bool,
+    registry_migration_plan_json: bool,
+    registry_migration_apply: bool,
+    recognition_readiness_json: bool,
     microphone_capture: bool,
     model_state: &'static str,
     registry_state: &'static str,
@@ -32,7 +36,7 @@ const fn describe() -> Capabilities {
             compiled,
             identify_json: compiled,
             enroll_audio: compiled,
-            enroll_json: false,
+            enroll_json: compiled,
             preprocessing: if compiled {
                 &["uniform", "valid-v1"]
             } else {
@@ -40,6 +44,10 @@ const fn describe() -> Capabilities {
             },
         },
         registry_inspection_json: true,
+        registry_discovery_json: true,
+        registry_migration_plan_json: true,
+        registry_migration_apply: true,
+        recognition_readiness_json: true,
         microphone_capture: false,
         model_state: "not_checked",
         registry_state: "not_checked",
@@ -51,11 +59,5 @@ const fn describe() -> Capabilities {
 /// # Errors
 /// Returns an error if serialization fails.
 pub fn run(yaml: bool) -> Result<()> {
-    let capabilities = describe();
-    if yaml {
-        print!("{}", serde_yaml::to_string(&capabilities)?);
-    } else {
-        println!("{}", serde_json::to_string_pretty(&capabilities)?);
-    }
-    Ok(())
+    crate::output::print(&describe(), yaml)
 }

@@ -51,7 +51,10 @@ fn capabilities_ignore_config_and_leave_model_registry_and_state_untouched() -> 
     assert_eq!(json["model_state"], "not_checked");
     assert_eq!(json["registry_state"], "not_checked");
     assert_eq!(json["microphone_capture"], false);
-    assert_eq!(json["recognition"]["enroll_json"], false);
+    assert_eq!(
+        json["recognition"]["enroll_json"],
+        cfg!(feature = "recognition")
+    );
     if cfg!(feature = "recognition") {
         assert_eq!(
             json["recognition"]["preprocessing"],

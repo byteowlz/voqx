@@ -29,6 +29,7 @@ pub mod math;
 pub mod preprocessing;
 pub mod recognition;
 pub mod registry;
+pub mod registry_discovery;
 pub mod registry_paths;
 mod time;
 
@@ -42,13 +43,16 @@ pub use analysis::{
     analyze_identity, analyze_registry, similarity_matrix,
 };
 pub use identity::{
-    Capabilities, RecognitionProfile, SourceRecording, SynthesisProfile, SynthesisReference,
-    VoiceIdentity, WakeProfile,
+    Capabilities, NORMALIZATION_TOLERANCE, RecognitionProfile, RecognitionVectorError,
+    SourceRecording, SynthesisProfile, SynthesisReference, VoiceIdentity, WakeProfile,
+    validate_vectors,
 };
 pub use math::{centroid, cosine};
 pub use preprocessing::RecognitionPreprocessing;
 pub use recognition::{AudioObservation, Recognition, RecognitionStatus, Thresholds};
-pub use registry::{REGISTRY_VERSION, RegistryStore, VoiceRegistry};
+pub use registry::{
+    REGISTRY_VERSION, RegistryCommit, RegistryRevisionConflict, RegistryStore, VoiceRegistry,
+};
 pub use registry_paths::{RegistryPaths, default_registry_root};
 
 /// Application name used for config directories and environment prefix.

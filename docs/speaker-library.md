@@ -162,6 +162,49 @@ Overlap do not. Scores are not probabilities or authentication. Centroid cosine 
 absent when references cancel. Snapshots hold at most 64 voices, 32 references per
 voice and 1,048,576 components.
 
+## Browser CPU phrase composition
+
+`web/phrase-speaker.mjs` exports `PhraseSpeaker` and `phraseSpace(minimum, maximum)`.
+The host supplies ORT Web, trusted graph bytes/manifest, an initialized Rust/WASM
+`SpeakerAttributor` class and an explicitly authorized canonical snapshot:
+
+```js
+const speaker = await PhraseSpeaker.create(ort, {
+  model: graphBytes, manifest, snapshot, SpeakerAttributor,
+  // Optional explicit calibration; absent means uncalibrated, not nearest-name.
+});
+const evidence = await speaker.evaluate(mono16kPcm, {
+  generation, start_sample, end_sample, activity: 'speech',
+});
+await speaker.close();
+```
+
+There is no fetch, microphone, upload, automatic snapshot export, registry write or
+new identity store. `space` is the exact native phrase descriptor; sandbox phrase,
+legacy window and WeSpeaker profiles are rejected, not migrated. The pinned graph
+is checked before session creation, CPU WASM uses one thread, windows cold-reset,
+only the last structural frame is padded, and normalized pooling is stored as f32.
+`evaluate` preserves raw Rust/WASM abstentions; `encode` is an explicit vector
+operation for authorized in-memory reference tooling/parity, not enrollment consent.
+Do not log vectors or snapshots. Activity is caller-supplied, not purity detection.
+
+Run inference in a worker. ORT Web's shared single-threaded WASM instance is not
+reentrant across sessions: **serialize wake/speaker `run()` calls in that worker**,
+or place the two engines in separate workers. Concurrent calls reproduced corrupt
+temporary bindings (`input name cannot be empty`). Consumers own bounded transport,
+deadlines, generation/profile fencing and delayed-result suppression; the waqy
+`WakeSpeakerObserver` implements that composition without changing wake detections.
+`close` refuses while encoding; cancel host results, await in-flight encoding, then
+release the backend. No synchronous ORT interruption is claimed.
+
+`just test-speaker-web` exercises reusable modules and sandbox wrappers. Generate
+native vectors/evidence with `just speaker-phrase-contract MODEL`; build WASM with
+`just speaker-wasm-build OUTPUT`. waqy's opt-in `just test-speaker-model` executes
+the real CPU graphs and matcher in Chromium, compares native phrase embeddings and
+evidence at 300/600/800.0625/1200 ms, and verifies shared-PCM wake composition with
+unchanged acoustic outputs. Its fixture is generated in memory, not a training or
+speaker-accuracy corpus. No human reference enrollment or model publication occurs.
+
 ## Browser interface and verification
 
 Developer tooling, not end-user installation:
@@ -192,4 +235,5 @@ explicit authorized operation. The binding performs no fetch, capture or upload.
 The Chromium check executes real WASM matching/tracking and compares full native
 evidence, fingerprints and stale errors. It is not encoder inference or speaker
 accuracy. Independent real voices, physical devices, long continuous tracking,
-clip playback and eaRS admission integration remain separate qualification/work.
+clip playback and eaRS admission qualification remain separate work. eaRS already
+has an opt-in in-process CPU annotation path; it does not enable strict admission.

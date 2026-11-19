@@ -2,8 +2,10 @@
 
 mod audio;
 mod capabilities;
+mod output;
 #[cfg(test)]
 mod preprocessing_tests;
+mod registry;
 mod voices;
 
 use std::env;
@@ -28,8 +30,15 @@ fn main() -> anyhow::Result<()> {
 fn try_main() -> Result<()> {
     let cli = Cli::parse();
     // Discovery must work even with missing/invalid config and no models or registry.
-    if matches!(cli.command, Command::Capabilities) {
-        return capabilities::run(cli.common.yaml);
+    match &cli.command {
+        Command::Capabilities => return capabilities::run(cli.common.yaml),
+        Command::Registry { command } => {
+            return registry::run(command, &cli.common);
+        }
+        Command::Enroll(args) => {
+            return voices::enroll::run(args, cli.common.registry.as_deref(), &cli.common);
+        }
+        _ => {}
     }
 
     let ctx = RuntimeContext::new(cli.common.clone())?;
@@ -40,15 +49,14 @@ fn try_main() -> Result<()> {
     let json = cli.common.json;
     match cli.command {
         Command::Capabilities => capabilities::run(cli.common.yaml),
+        Command::Registry { command } => registry::run(&command, &cli.common),
         Command::Run(cmd) => handle_run(&ctx, cmd),
         Command::Init(cmd) => handle_init(&ctx, cmd),
         Command::Config { command } => handle_config(&ctx, command),
         Command::Identities { command } => {
             voices::identities::run(command, registry_root.as_deref(), json)
         }
-        Command::Enroll(args) => {
-            voices::enroll::run(&args, registry_root.as_deref(), ctx.common.quiet)
-        }
+        Command::Enroll(args) => voices::enroll::run(&args, registry_root.as_deref(), &ctx.common),
         Command::References { command } => {
             voices::enroll::run_references(command, registry_root.as_deref(), json)
         }
@@ -160,6 +168,11 @@ pub enum ColorOption {
 enum Command {
     /// Print versioned build capabilities without reading config, models or the registry
     Capabilities,
+    /// Read-only registry discovery and migration planning (no config/model setup)
+    Registry {
+        #[command(subcommand)]
+        command: registry::RegistryCommand,
+    },
     /// Execute the CLI's primary behavior
     Run(RunCommand),
     /// Create config directories and default files
@@ -175,7 +188,7 @@ enum Command {
         command: voices::identities::IdentitiesCommand,
     },
     /// Enroll a recording as recognition and/or synthesis derivatives
-    Enroll(voices::enroll::EnrollArgs),
+    Enroll(Box<voices::enroll::EnrollArgs>),
     /// Inspect synthesis references
     References {
         #[command(subcommand)]

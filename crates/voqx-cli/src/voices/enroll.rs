@@ -15,6 +15,9 @@ use crate::audio::{self, Audio, RECOGNITION_SAMPLE_RATE, SYNTHESIS_SAMPLE_RATE};
 
 use super::{open_store, read_transcript, relative_to_root, resolve_id};
 
+mod receipt;
+pub use receipt::{EnrollmentOutcome, EnrollmentReport};
+
 #[cfg(test)]
 mod tests;
 
@@ -29,6 +32,9 @@ pub struct EnrollArgs {
     /// Attach to an existing identity instead of creating one
     #[arg(long, value_name = "VOICE_ID")]
     pub id: Option<String>,
+    /// Refuse mutation unless the current registry has this exact byte revision
+    #[arg(long, value_name = "SHA256")]
+    pub expected_revision: Option<String>,
     /// Source recording (WAV)
     #[arg(long, value_name = "PATH")]
     pub audio: PathBuf,
@@ -75,53 +81,167 @@ pub struct EnrollArgs {
 ///
 /// Returns an error if the audio cannot be read, a derivative cannot be
 /// written, or the registry cannot be updated.
-pub fn run(args: &EnrollArgs, root: Option<&Path>, quiet: bool) -> Result<()> {
-    if args.recognition && !cfg!(feature = "recognition") {
-        bail!(
-            "this build has no recognition support; rebuild with --features recognition to use --recognition"
+pub fn run(args: &EnrollArgs, root: Option<&Path>, common: &crate::CommonOpts) -> Result<()> {
+    let report = execute(args, root, common);
+    if common.json || common.yaml {
+        crate::output::print(&report, common.yaml)?;
+    } else if let EnrollmentOutcome::Committed { voice_id, .. } = &report.outcome
+        && !common.quiet
+    {
+        println!("enrolled {voice_id}");
+    }
+    if let EnrollmentOutcome::Failed { code, .. } = report.outcome {
+        bail!("enrollment failed ({code:?}); inspect the receipt and registry before retrying");
+    }
+    Ok(())
+}
+
+fn execute(args: &EnrollArgs, root: Option<&Path>, common: &crate::CommonOpts) -> EnrollmentReport {
+    use receipt::{FailureCode, RegistryEffect};
+    if common.dry_run {
+        return EnrollmentReport::failed(
+            FailureCode::DryRunUnsupported,
+            RegistryEffect::NotStarted,
+            false,
         );
     }
+    if !common.assume_yes {
+        return EnrollmentReport::failed(
+            FailureCode::ConfirmationRequired,
+            RegistryEffect::NotStarted,
+            false,
+        );
+    }
+    if args.recognition && !cfg!(feature = "recognition") {
+        return EnrollmentReport::failed(
+            FailureCode::RecognitionNotCompiled,
+            RegistryEffect::NotStarted,
+            false,
+        );
+    }
+    let Ok(prepared) = prepare(args, common.quiet) else {
+        return EnrollmentReport::failed(
+            FailureCode::PreparationFailed,
+            RegistryEffect::NotStarted,
+            false,
+        );
+    };
+    match commit(args, root, &prepared) {
+        Ok(outcome) => EnrollmentReport {
+            protocol: "voqx-enrollment/1",
+            outcome,
+        },
+        Err(error) if error.is::<voqx_core::RegistryRevisionConflict>() => {
+            EnrollmentReport::failed(
+                FailureCode::StaleRevision,
+                RegistryEffect::NotStarted,
+                false,
+            )
+        }
+        Err(_) => EnrollmentReport::failed(
+            FailureCode::RegistryUpdateFailed,
+            RegistryEffect::Uncertain,
+            true,
+        ),
+    }
+}
+
+#[derive(Debug)]
+struct PreparedEnrollment {
+    source: Audio,
+    transcript: Option<String>,
+    embedding: Option<Vec<f32>>,
+}
+
+fn prepare(args: &EnrollArgs, quiet: bool) -> Result<PreparedEnrollment> {
     let source = audio::read_wav(&args.audio)?;
     if !quiet {
         for warning in audio::hygiene_warnings(&source) {
             eprintln!("warning: {warning}");
         }
     }
-
-    let transcript = if args.synthesis.is_some() {
+    let transcript = if args.synthesis.is_some()
+        || args.transcript.is_some()
+        || args.transcript_file.is_some()
+    {
         Some(read_transcript(
             args.transcript.as_deref(),
             args.transcript_file.as_deref(),
         )?)
     } else {
-        read_transcript(args.transcript.as_deref(), args.transcript_file.as_deref()).ok()
+        None
     };
-
     let embedding = derive_embedding(args, &source)?;
+    Ok(PreparedEnrollment {
+        source,
+        transcript,
+        embedding,
+    })
+}
 
+fn commit(
+    args: &EnrollArgs,
+    root: Option<&Path>,
+    prepared: &PreparedEnrollment,
+) -> Result<EnrollmentOutcome> {
     let store = open_store(root)?;
     let paths = store.paths().clone();
-    let voice_id = store.edit(|registry| {
+    let committed = store.edit_with_revision(args.expected_revision.as_deref(), |registry| {
         let id = resolve_or_create(registry, args)?;
         let identity = registry
             .find_mut(&id)
             .context("identity vanished during enrollment")?;
-        attach_source(identity, &paths, args, &source, transcript.as_deref())?;
-        if let Some(vector) = embedding.clone() {
-            attach_recognition(identity, &paths, &source, vector, args.preprocessing)?;
+        if args.recognition
+            && let Some(profile) = identity.recognition_profile(args.preprocessing.engine_id())
+            && profile.model_version != args.preprocessing.model_version()
+        {
+            bail!("existing recognition profile has an incompatible model version");
+        }
+        attach_source(
+            identity,
+            &paths,
+            args,
+            &prepared.source,
+            prepared.transcript.as_deref(),
+        )?;
+        let source_id = identity
+            .sources
+            .last()
+            .context("source missing after attachment")?
+            .id
+            .clone();
+        if let Some(vector) = &prepared.embedding {
+            attach_recognition(
+                identity,
+                &paths,
+                &prepared.source,
+                vector.clone(),
+                args.preprocessing,
+            )?;
         }
         if let Some(engine) = args.synthesis.as_deref() {
-            let text = transcript
+            let text = prepared
+                .transcript
                 .as_deref()
                 .context("synthesis requires an exact transcript")?;
-            attach_synthesis(identity, &paths, args, &source, engine, text)?;
+            attach_synthesis(identity, &paths, args, &prepared.source, engine, text)?;
         }
         identity.touch();
-        Ok(id)
+        Ok((id, source_id))
     })?;
-
-    println!("enrolled {voice_id}");
-    Ok(())
+    Ok(EnrollmentOutcome::Committed {
+        voice_id: committed.value.0,
+        source_id: committed.value.1,
+        registry_revision: committed.revision,
+        preprocessing: args.recognition.then(|| args.preprocessing.to_string()),
+        recognition_engine: args
+            .recognition
+            .then(|| args.preprocessing.engine_id().into()),
+        recognition_model_version: args
+            .recognition
+            .then(|| args.preprocessing.model_version().into()),
+        synthesis_engine: args.synthesis.clone(),
+    })
 }
 
 #[cfg(feature = "recognition")]
@@ -136,7 +256,10 @@ fn derive_embedding(args: &EnrollArgs, source: &Audio) -> Result<Option<Vec<f32>
 }
 
 #[cfg(not(feature = "recognition"))]
-fn derive_embedding(_args: &EnrollArgs, _source: &Audio) -> Result<Option<Vec<f32>>> {
+fn derive_embedding(args: &EnrollArgs, _source: &Audio) -> Result<Option<Vec<f32>>> {
+    if args.recognition {
+        bail!("recognition is not compiled in this build");
+    }
     Ok(None)
 }
 
@@ -206,7 +329,14 @@ fn attach_recognition(
     let sample_rel = relative_to_root(paths, &sample_path)?;
 
     match existing {
-        Some(i) => identity.recognition_profiles[i].add_samples(vec![embedding], vec![sample_rel]),
+        Some(i) => identity.recognition_profiles[i]
+            .add_samples(vec![embedding], vec![sample_rel])
+            .with_context(|| {
+                format!(
+                    "adding a reference in an incompatible space for {}",
+                    identity.id
+                )
+            })?,
         None => identity.recognition_profiles.push(RecognitionProfile::new(
             engine,
             preprocessing.model_version(),

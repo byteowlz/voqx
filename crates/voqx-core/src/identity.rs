@@ -6,9 +6,186 @@
 //! directory is portable.
 
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::math::centroid;
 use crate::time::now_unix;
+
+/// Allowed deviation of a reference vector's L2 norm from `1.0`.
+///
+/// Cosine matching assumes unit vectors; a profile whose vectors drift further
+/// is refused rather than silently skewed. This is a numerical check, not a
+/// statement about which encoder produced the vector.
+pub const NORMALIZATION_TOLERANCE: f64 = 1e-3;
+
+/// Why reference vectors cannot form a usable recognition profile.
+#[derive(Debug, Clone, Copy, PartialEq, Error)]
+pub enum RecognitionVectorError {
+    /// Neither vectors nor a centroid were supplied.
+    #[error("no reference vectors or centroid")]
+    Empty,
+    /// A vector's dimension differs from the first vector's.
+    #[error("reference vector {index} has dimension {found}, expected {expected}")]
+    MixedDimensions {
+        /// Zero-based index of the offending vector.
+        index: usize,
+        /// Dimension established by the first vector.
+        expected: usize,
+        /// Dimension actually found.
+        found: usize,
+    },
+    /// A vector holds `NaN` or infinity.
+    #[error("reference vector {index} contains a non-finite value")]
+    NonFinite {
+        /// Zero-based index of the offending vector.
+        index: usize,
+    },
+    /// A vector has zero length.
+    #[error("reference vector {index} has zero norm")]
+    ZeroNorm {
+        /// Zero-based index of the offending vector.
+        index: usize,
+    },
+    /// A vector's L2 norm is outside [`NORMALIZATION_TOLERANCE`] of `1.0`.
+    #[error("reference vector {index} has L2 norm {norm:.6}, outside {tolerance} of 1.0")]
+    NotNormalized {
+        /// Zero-based index of the offending vector.
+        index: usize,
+        /// Measured L2 norm.
+        norm: f64,
+        /// Accepted deviation from `1.0`.
+        tolerance: f64,
+    },
+    /// The centroid's dimension differs from the vectors'.
+    #[error("centroid has dimension {found}, expected {expected}")]
+    CentroidDimension {
+        /// Dimension established by the vectors.
+        expected: usize,
+        /// Dimension actually found.
+        found: usize,
+    },
+    /// The centroid holds `NaN` or infinity.
+    #[error("centroid contains a non-finite value")]
+    CentroidNonFinite,
+    /// The centroid has zero length.
+    #[error("centroid has zero norm")]
+    CentroidZeroNorm,
+    /// The centroid's L2 norm is outside [`NORMALIZATION_TOLERANCE`] of `1.0`.
+    #[error("centroid has L2 norm {norm:.6}, outside {tolerance} of 1.0")]
+    CentroidNotNormalized {
+        /// Measured L2 norm.
+        norm: f64,
+        /// Accepted deviation from `1.0`.
+        tolerance: f64,
+    },
+}
+
+/// Validate reference vectors and an optional centroid before they enter a
+/// profile.
+///
+/// Every vector must share one dimension, hold finite values, have nonzero
+/// length and sit within [`NORMALIZATION_TOLERANCE`] of unit L2 norm. A
+/// non-empty centroid must match the vector dimension and satisfy the same
+/// numerical rules.
+///
+/// These checks establish numerical usability only. They cannot establish which
+/// encoder, checkpoint or frontend produced the vectors, and equal dimensions
+/// do not mean compatible embedding spaces.
+///
+/// # Errors
+///
+/// Returns the first violated rule as a [`RecognitionVectorError`].
+pub fn validate_vectors(
+    embeddings: &[Vec<f32>],
+    centroid: &[f32],
+) -> std::result::Result<(), RecognitionVectorError> {
+    if embeddings.is_empty() && centroid.is_empty() {
+        return Err(RecognitionVectorError::Empty);
+    }
+    let mut expected = None;
+    for (index, embedding) in embeddings.iter().enumerate() {
+        let dimension = embedding.len();
+        if let Some(expected) = expected
+            && dimension != expected
+        {
+            return Err(RecognitionVectorError::MixedDimensions {
+                index,
+                expected,
+                found: dimension,
+            });
+        }
+        expected = Some(dimension);
+        validate_values(embedding, |reason| reason.with_index(index))?;
+    }
+    if !centroid.is_empty() {
+        if let Some(expected) = expected
+            && centroid.len() != expected
+        {
+            return Err(RecognitionVectorError::CentroidDimension {
+                expected,
+                found: centroid.len(),
+            });
+        }
+        validate_values(centroid, VectorRule::for_centroid)?;
+    }
+    Ok(())
+}
+
+/// Per-vector numerical checks shared by references and centroids.
+fn validate_values(
+    values: &[f32],
+    classify: impl FnOnce(VectorRule) -> RecognitionVectorError,
+) -> std::result::Result<(), RecognitionVectorError> {
+    if values.iter().any(|value| !value.is_finite()) {
+        return Err(classify(VectorRule::NonFinite));
+    }
+    let norm = values
+        .iter()
+        .map(|value| f64::from(*value) * f64::from(*value))
+        .sum::<f64>()
+        .sqrt();
+    if norm < f64::EPSILON {
+        return Err(classify(VectorRule::ZeroNorm));
+    }
+    if (norm - 1.0).abs() > NORMALIZATION_TOLERANCE {
+        return Err(classify(VectorRule::NotNormalized(norm)));
+    }
+    Ok(())
+}
+
+/// The numerical rule that failed, before it is attributed to a vector or the
+/// centroid.
+#[derive(Debug, Clone, Copy)]
+enum VectorRule {
+    NonFinite,
+    ZeroNorm,
+    NotNormalized(f64),
+}
+
+impl VectorRule {
+    const fn with_index(self, index: usize) -> RecognitionVectorError {
+        match self {
+            Self::NonFinite => RecognitionVectorError::NonFinite { index },
+            Self::ZeroNorm => RecognitionVectorError::ZeroNorm { index },
+            Self::NotNormalized(norm) => RecognitionVectorError::NotNormalized {
+                index,
+                norm,
+                tolerance: NORMALIZATION_TOLERANCE,
+            },
+        }
+    }
+
+    const fn for_centroid(self) -> RecognitionVectorError {
+        match self {
+            Self::NonFinite => RecognitionVectorError::CentroidNonFinite,
+            Self::ZeroNorm => RecognitionVectorError::CentroidZeroNorm,
+            Self::NotNormalized(norm) => RecognitionVectorError::CentroidNotNormalized {
+                norm,
+                tolerance: NORMALIZATION_TOLERANCE,
+            },
+        }
+    }
+}
 
 /// A durable, engine-agnostic voice entity.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -180,11 +357,29 @@ impl RecognitionProfile {
     }
 
     /// Append embeddings and sample paths and recompute the centroid.
-    pub fn add_samples(&mut self, mut embeddings: Vec<Vec<f32>>, mut samples: Vec<String>) {
-        self.embeddings.append(&mut embeddings);
-        self.samples.append(&mut samples);
+    ///
+    /// The profile is unchanged when validation fails, so a refused append never
+    /// leaves a half-updated centroid or misaligned sample list.
+    ///
+    /// # Errors
+    ///
+    /// Rejects mixed dimensions or an existing centroid that is incompatible
+    /// with the merged vectors ([`validate_vectors`]). Same-dimension vectors
+    /// from a different embedding space are indistinguishable here; the caller
+    /// owns engine/model provenance.
+    pub fn add_samples(
+        &mut self,
+        embeddings: Vec<Vec<f32>>,
+        samples: Vec<String>,
+    ) -> std::result::Result<(), RecognitionVectorError> {
+        let mut merged = self.embeddings.clone();
+        merged.extend(embeddings);
+        validate_vectors(&merged, &self.centroid)?;
+        self.embeddings = merged;
+        self.samples.extend(samples);
         self.centroid = centroid(&self.embeddings);
         self.updated_at_unix = now_unix();
+        Ok(())
     }
 
     /// Drop the sample at `index` and recompute the centroid.
@@ -303,7 +498,100 @@ pub struct WakeProfile {
 
 #[cfg(test)]
 mod tests {
-    use super::{RecognitionProfile, SynthesisProfile, SynthesisReference, VoiceIdentity};
+    use super::{
+        NORMALIZATION_TOLERANCE, RecognitionProfile, RecognitionVectorError, SynthesisProfile,
+        SynthesisReference, VoiceIdentity, validate_vectors,
+    };
+
+    #[test]
+    fn vectors_must_share_dimensions_and_sit_near_unit_norm() {
+        assert_eq!(validate_vectors(&[vec![1.0, 0.0]], &[]), Ok(()));
+        assert_eq!(
+            validate_vectors(&[vec![1.0, 0.0], vec![1.0, 0.0, 0.0]], &[]),
+            Err(RecognitionVectorError::MixedDimensions {
+                index: 1,
+                expected: 2,
+                found: 3,
+            })
+        );
+        assert_eq!(
+            validate_vectors(&[vec![f32::NAN, 0.0]], &[]),
+            Err(RecognitionVectorError::NonFinite { index: 0 })
+        );
+        assert_eq!(
+            validate_vectors(&[vec![0.0, 0.0]], &[]),
+            Err(RecognitionVectorError::ZeroNorm { index: 0 })
+        );
+        assert_eq!(
+            validate_vectors(&[vec![2.0, 0.0]], &[]),
+            Err(RecognitionVectorError::NotNormalized {
+                index: 0,
+                norm: 2.0,
+                tolerance: NORMALIZATION_TOLERANCE,
+            })
+        );
+    }
+
+    #[test]
+    fn a_centroid_only_profile_is_valid_but_an_empty_one_is_not() {
+        assert_eq!(validate_vectors(&[], &[1.0, 0.0]), Ok(()));
+        assert_eq!(
+            validate_vectors(&[], &[]),
+            Err(RecognitionVectorError::Empty)
+        );
+        assert_eq!(
+            validate_vectors(&[vec![1.0, 0.0]], &[1.0, 0.0, 0.0]),
+            Err(RecognitionVectorError::CentroidDimension {
+                expected: 2,
+                found: 3,
+            })
+        );
+        assert_eq!(
+            validate_vectors(&[], &[0.5, 0.0]),
+            Err(RecognitionVectorError::CentroidNotNormalized {
+                norm: 0.5,
+                tolerance: NORMALIZATION_TOLERANCE,
+            })
+        );
+    }
+
+    #[test]
+    fn a_refused_append_leaves_the_profile_unchanged() {
+        let mut profile = RecognitionProfile::new(
+            "speakrs-wespeaker",
+            "unverified-trnscrb-v1",
+            vec![vec![1.0, 0.0]],
+            vec!["sample-1.wav".into()],
+        );
+        let before = profile.clone();
+        assert_eq!(
+            profile.add_samples(vec![vec![1.0, 0.0, 0.0]], vec!["sample-2.wav".into()]),
+            Err(RecognitionVectorError::MixedDimensions {
+                index: 1,
+                expected: 2,
+                found: 3,
+            })
+        );
+        assert_eq!(profile.embeddings, before.embeddings);
+        assert_eq!(profile.centroid, before.centroid);
+        assert_eq!(profile.samples, before.samples);
+        assert_eq!(profile.updated_at_unix, before.updated_at_unix);
+    }
+
+    #[test]
+    fn an_accepted_append_recomputes_the_centroid() {
+        let mut profile = RecognitionProfile::new("engine", "v1", vec![vec![1.0, 0.0]], vec![]);
+        assert_eq!(
+            profile.add_samples(vec![vec![0.0, 1.0]], vec!["sample-2.wav".into()]),
+            Ok(())
+        );
+        assert_eq!(profile.embeddings.len(), 2);
+        assert_eq!(profile.samples, vec!["sample-2.wav".to_string()]);
+        assert_eq!(
+            validate_vectors(&profile.embeddings, &profile.centroid),
+            Ok(())
+        );
+    }
 
     #[test]
     fn capabilities_reflect_profiles() {
